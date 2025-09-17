@@ -97,7 +97,8 @@ export async function findSimilarChunks(
 	limit: number,
 ): Promise<ChunkWithEmbedding[]> {
 	return await sql`
-    SELECT c.*, e.embedding, d.content as document_content
+    SELECT c.*, e.embedding, d.content as document_content,
+           (1 - (e.embedding <-> ${JSON.stringify(embedding)}::vector)) as similarity_score
     FROM chunks c
     JOIN embeddings e ON c.id = e.chunk_id
     JOIN documents d ON c.document_id = d.id

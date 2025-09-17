@@ -20,6 +20,7 @@ export interface Embedding {
 export interface ChunkWithEmbedding extends Chunk {
 	embedding: number[];
 	document_content?: string;
+	similarity_score?: number;
 }
 
 // Function parameter types

@@ -1,10 +1,10 @@
 import type { BenchmarkRegistry, BenchmarkType } from "./benchmarks";
 import { ragBenchmarkData } from "./benchmarks";
-import { AQRAGProvider, RAGProvider, type TemplateType } from "./providers";
+import { AQRAGProvider, ContextualRetrievalProvider, type TemplateType } from "./providers";
 
 // Provider registry
 const PROVIDERS: Record<string, TemplateType> = {
-	RAG: RAGProvider,
+	ContextualRetrieval: ContextualRetrievalProvider,
 	AQRAG: AQRAGProvider,
 };
 
@@ -153,8 +153,8 @@ Options:
   --providers, -p   Providers to test (${Object.keys(PROVIDERS).join(", ")})
 
 Examples:
-  bun run index.ts --benchmarks RAG --providers RAG AQRAG
-  bun run index.ts -b RAG -p RAG
+  bun run index.ts --benchmarks RAG --providers ContextualRetrieval AQRAG
+  bun run index.ts -b RAG -p ContextualRetrieval
       `);
 			return;
 		}

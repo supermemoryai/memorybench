@@ -118,7 +118,8 @@ export async function findSimilarWeighted(
     SELECT
       cs.*,
       qs.question_distance,
-      (cs.chunk_distance * cs.chunk_weight + qs.question_distance * qs.question_weight) as weighted_distance
+      (cs.chunk_distance * cs.chunk_weight + qs.question_distance * qs.question_weight) as weighted_distance,
+      (1 - (cs.chunk_distance * cs.chunk_weight + qs.question_distance * qs.question_weight)) as similarity_score
     FROM chunk_similarities cs
     JOIN question_similarities qs ON cs.id = qs.id
     ORDER BY weighted_distance ASC

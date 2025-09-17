@@ -1,6 +1,6 @@
-import type { BenchmarkType, BenchmarkRegistry } from '../../benchmarks';
+import type { BenchmarkRegistry, BenchmarkType } from "../../benchmarks";
 
-const mockSearchFunction = async (query: string) => {
+const mockSearchFunction = async (_query: string) => {
 	return [
 		{
 			id: "",
@@ -15,9 +15,9 @@ export interface PreparedData {
 	metadata: Record<string, unknown>;
 }
 
-export interface BenchmarkProcessor<T extends BenchmarkType> {
-	(data: BenchmarkRegistry[T][]): PreparedData[];
-}
+export type BenchmarkProcessor<T extends BenchmarkType> = (
+	data: BenchmarkRegistry[T][],
+) => PreparedData[];
 
 export type BenchmarkProcessors = {
 	[K in BenchmarkType]?: BenchmarkProcessor<K>;
@@ -37,29 +37,33 @@ const templateType = {
 
 	prepareProvider: <T extends BenchmarkType>(
 		benchmarkType: T,
-		data: BenchmarkRegistry[T][]
+		data: BenchmarkRegistry[T][],
 	): PreparedData[] => {
 		const processors: BenchmarkProcessors = {
-			'RAG': (ragData: BenchmarkRegistry['RAG'][]) => {
+			RAG: (ragData: BenchmarkRegistry["RAG"][]) => {
 				return ragData.map((item) => ({
-					context: `Question: ${item.question}\n\nDocuments:\n${item.documents.map((d) => `- ${d.title}: ${d.content}`).join('\n')}`,
+					context: `Question: ${item.question}\n\nDocuments:\n${item.documents.map((d) => `- ${d.title}: ${d.content}`).join("\n")}`,
 					metadata: {
 						id: item.id,
 						expectedAnswer: item.expected_answer,
 						difficulty: item.metadata.difficulty,
-						category: item.metadata.category
-					}
+						category: item.metadata.category,
+					},
 				}));
-			}
+			},
 		};
 
-		const processor = processors[benchmarkType] as BenchmarkProcessor<T> | undefined;
+		const processor = processors[benchmarkType] as
+			| BenchmarkProcessor<T>
+			| undefined;
 		if (!processor) {
-			throw new Error(`Benchmark type "${benchmarkType}" not supported by this provider`);
+			throw new Error(
+				`Benchmark type "${benchmarkType}" not supported by this provider`,
+			);
 		}
 
 		return processor(data);
-	}
+	},
 };
 
 export type TemplateType = typeof templateType;

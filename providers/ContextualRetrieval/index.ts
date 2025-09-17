@@ -1,21 +1,31 @@
 import type { BenchmarkRegistry, BenchmarkType } from "../../benchmarks";
 import type { PreparedData, TemplateType } from "../_template";
+import { processDocument } from "./src/add";
 import { initDatabase } from "./src/db";
+import { retrieve } from "./src/retrieve";
 
 await initDatabase();
 
 export default {
 	name: "ContextualRetrieval",
 	addContext: async (data: PreparedData) => {
-		// Process context with full type safety
-		console.log(`Processing RAG context: ${data.context}`);
+		console.log(`Processing ContextualRetrieval context: ${data.context}`);
 		console.log(`Metadata:`, data.metadata);
-		// Add your RAG-specific context processing here
+
+		// Process the context as a document using contextual retrieval
+		await processDocument(data.context);
 	},
 
 	searchQuery: async (query: string) => {
-		// RAG search implementation
-		return [];
+		console.log(`Searching with ContextualRetrieval: ${query}`);
+		const results = await retrieve(query);
+
+		// Transform ChunkWithEmbedding[] to expected format with actual similarity scores
+		return results.map((chunk) => ({
+			id: chunk.id.toString(),
+			context: chunk.content,
+			score: chunk.similarity_score || 0,
+		}));
 	},
 
 	prepareProvider: <T extends BenchmarkType>(
@@ -23,8 +33,8 @@ export default {
 		data: BenchmarkRegistry[T][],
 	): PreparedData[] => {
 		switch (benchmarkType) {
-			case "RAG": {
-				const ragData = data as BenchmarkRegistry["RAG"][];
+			case "RAG-template-benchmark": {
+				const ragData = data as BenchmarkRegistry["RAG-template-benchmark"][];
 				return ragData.map((item) => ({
 					context: `Question: ${item.question}\n\nRelevant Documents:\n${item.documents.map((d) => `- ${d.title || "Document"}: ${d.content}`).join("\n")}`,
 					metadata: {

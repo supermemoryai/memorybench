@@ -31,4 +31,5 @@ export interface WeightedSearchResult {
 	chunk_weight: number;
 	question_distance: number;
 	weighted_distance: number;
+	similarity_score: number;
 }
