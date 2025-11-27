@@ -6,37 +6,54 @@ Uses a default model (gemini-3-pro-preview) to evaluate answer quality.
 import { readFileSync, writeFileSync, existsSync, readdirSync, mkdirSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
+import { createOpenAI } from '@ai-sdk/openai';
+import { config, validateConfig } from '../utils/config.ts';
 import { createVertex } from '@ai-sdk/google-vertex/edge';
 import { generateText } from 'ai';
-import { config, validateConfig } from '../utils/config.ts';
-
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-validateConfig(['googleVertexProjectId']);
+validateConfig(['googleVertexProjectId']); 
+
+if (!process.env.OPENAI_API_KEY) {
+    console.error("Error: OPENAI_API_KEY environment variable is required for the judge (GPT-4o).");
+    process.exit(1);
+}
 
 // Get command line arguments
 const args = process.argv.slice(2);
 if (args.length < 1) {
-    console.error("Usage: bun run evaluate.ts <runId> [questionType]");
-    console.error("Example: bun run evaluate.ts run1");
-    console.error("Example: bun run evaluate.ts run1 single-session-user");
+    console.error("Usage: bun run evaluate.ts <runId> [model] [questionType] [startPosition] [endPosition]");
+    console.error("Example: bun run evaluate.ts run1 gpt-4o");
+    console.error("Example: bun run evaluate.ts run1 gpt-5 single-session-user");
     process.exit(1);
 }
 
 const runId = args[0];
-let questionTypeFilter = args[1]; // Optional
-const startPosition = args[2] ? parseInt(args[2], 10) : undefined;
-const endPosition = args[3] ? parseInt(args[3], 10) : undefined;
+// Default model to gpt-4o if not provided or valid
+let model = args[1] || 'gpt-4o';
+let questionTypeFilter = args[2]; // Optional
+const startPosition = args[3] ? parseInt(args[3], 10) : undefined;
+const endPosition = args[4] ? parseInt(args[4], 10) : undefined;
+
+// Validate answering model
+const validModels = ['gpt-4o', 'gpt-5', 'gemini-3-pro-preview'];
+if (!validModels.includes(model)) {
+    console.error(`Error: Unknown model '${model}'. Valid models: ${validModels.join(', ')}`);
+    process.exit(1);
+}
 
 if (questionTypeFilter === 'all') {
     questionTypeFilter = undefined;
 }
 
-// Fixed model
-const model = 'gemini-3-pro-preview';
+// Judging model
+const JUDGE_MODEL = 'gpt-4o';
 
 console.log(`Evaluating results for: ${runId}`);
+console.log(`Answering Model: ${model}`);
+console.log(`Judge Model: ${JUDGE_MODEL}`);
+
 if (questionTypeFilter) {
     console.log(`Question type filter: ${questionTypeFilter}`);
 } else {
@@ -47,13 +64,26 @@ if (startPosition && endPosition) {
     console.log(`Processing range: ${startPosition} to ${endPosition}`);
 }
 
-console.log(`Using model: ${model}`);
 console.log(`Using ALL retrieved results from each file\n`);
 
+// Initialize providers
 const vertex = createVertex({
     project: config.googleVertexProjectId,
     location: "global",
 });
+
+const openai = createOpenAI({
+    apiKey: process.env.OPENAI_API_KEY,
+});
+
+// Helper to get the appropriate model instance
+function getModelInstance(modelName: string) {
+    if (modelName === 'gemini-3-pro-preview') {
+        return vertex(modelName);
+    } else {
+        return openai(modelName);
+    }
+}
 
 // Setup directories
 const resultsDir = join(__dirname, '../../results');
@@ -118,7 +148,7 @@ if (startPosition !== undefined && endPosition !== undefined) {
 // Output file path
 const typeSuffix = questionTypeFilter ? `-${questionTypeFilter}` : '';
 const rangeSuffix = (startPosition && endPosition) ? `-${startPosition}-${endPosition}` : '-all';
-const outputFilename = `eval-${runId}${typeSuffix}${rangeSuffix}.json`;
+const outputFilename = `eval-${runId}-${model}${typeSuffix}${rangeSuffix}.json`;
 const outputPath = join(evalDir, outputFilename);
 
 interface EvaluationResult {
@@ -194,10 +224,16 @@ Instructions:
 Answer:`;
 
     try {
-        const result = await generateText({
-            model: vertex(model),
+        const generateOptions: any = {
+            model: getModelInstance(model),
             messages: [{ role: 'user', content: answerPrompt }],
-        });
+        };
+
+        if (model === 'gpt-5') {
+            generateOptions.reasoning_effort = "medium";
+        }
+
+        const result = await generateText(generateOptions);
         return result.text.trim();
     } catch (error) {
         return `Error generating answer: ${error instanceof Error ? error.message : String(error)}`;
@@ -207,47 +243,55 @@ Answer:`;
 async function judgeAnswer(
     question: string,
     groundTruth: string,
-    hypothesis: string
+    hypothesis: string,
+    questionType: string // Added questionType parameter
 ): Promise<{ label: number; explanation: string }> {
-    const judgementPrompt = `You are an expert language model evaluator. Your task is to determine if a model-generated response correctly answers a given question, based on a ground-truth answer.
+    let promptInstruction = '';
+    let groundTruthSection = '';
 
-**Evaluation Rules:**
+    // Select prompt based on question type
+    if (questionType === 'temporal-reasoning') {
+        promptInstruction = `I will give you a question, a correct answer, and a response from a model. Please answer yes if the response contains the correct answer. Otherwise, answer no. If the response is equivalent to the correct answer or contains all the intermediate steps to get the correct answer, you should also answer yes. If the response only contains a subset of the information required by the answer, answer no. In addition, do not penalize off-by-one errors for the number of days. If the question asks for the number of days/weeks/months, etc., and the model makes off-by-one errors (e.g., predicting 19 days when the answer is 18), the model's response is still correct.`;
+        
+        groundTruthSection = `<CORRECT ANSWER>
+${groundTruth}
+</CORRECT ANSWER>`;
 
-**Answer Yes (label: 1) if:**
-- The response contains or directly matches the correct answer
-- The response includes all necessary intermediate steps leading to the correct answer
+    } else if (questionType === 'knowledge-update') {
+        promptInstruction = `I will give you a question, a correct answer, and a response from a model. Please answer yes if the response contains the correct answer. Otherwise, answer no. If the response contains some previous information along with an updated answer, the response should be considered as correct as long as the updated answer is the required answer.`;
+        
+        groundTruthSection = `<CORRECT ANSWER>
+${groundTruth}
+</CORRECT ANSWER>`;
 
-**Answer No (label: 0) if:**
-- The response provides only a partial answer or omits essential information
-- The response does not sufficiently address the question
+    } else if (questionType === 'single-session-preference') {
+        promptInstruction = `I will give you a question, a rubric for desired personalized response, and a response from a model. Please answer yes if the response satisfies the desired response. Otherwise, answer no. The model does not need to reflect all the points in the rubric. The response is correct as long as it recalls and utilizes the user's personal information correctly.`;
+        
+        groundTruthSection = `<RUBRIC>
+${groundTruth}
+</RUBRIC>`;
 
-**Examples:**
+    } else {
+        // Default for other types
+        promptInstruction = `I will give you a question, a correct answer, and a response from a model. Please answer yes if the response contains the correct answer. Otherwise, answer no. If the response is equivalent to the correct answer or contains all the intermediate steps to get the correct answer, you should also answer yes. If the response only contains a subset of the information required by the answer, answer no.`;
+        
+        groundTruthSection = `<CORRECT ANSWER>
+${groundTruth}
+</CORRECT ANSWER>`;
+    }
 
-**Example 1: Correct Response**
-Question: "What is the capital of France?"
-Ground-truth Answer: "Paris"
-Response: "The capital of France is Paris."
-Evaluation Output: Yes (label: 1)
+    const judgementPrompt = `${promptInstruction}
 
-**Example 2: Incorrect Response**
-Question: "What is the capital of France?"
-Ground-truth Answer: "Paris"
-Response: "France is a country in Europe."
-Evaluation Output: No (label: 0)
+<QUESTION>
+B: ${question}
+</QUESTION>
 
-**General Instructions:**
-- Base your decision strictly on the information in the response
-- Avoid subjective interpretations and adhere to the provided examples
-- Apply the evaluation criteria consistently
+${groundTruthSection}
 
-**Input:**
-Question: ${question}
+<RESPONSE>
+A: ${hypothesis}
+</RESPONSE>
 
-Ground-truth Answer: ${groundTruth}
-
-Response: ${hypothesis}
-
-**Output:**
 Respond in the following JSON format:
 {
   "label": 0 or 1,
@@ -256,7 +300,7 @@ Respond in the following JSON format:
 
     try {
         const result = await generateText({
-            model: vertex(model),
+            model: openai(JUDGE_MODEL),
             messages: [{ role: 'user', content: judgementPrompt }],
         });
 
@@ -325,7 +369,7 @@ async function evaluateQuestion(resultData: any): Promise<EvaluationResult> {
     
     try {
         const hypothesis = await generateAnswer(metadata.question, retrievedContext, metadata.questionDate);
-        const { label, explanation } = await judgeAnswer(metadata.question, metadata.groundTruthAnswer, hypothesis);
+        const { label, explanation } = await judgeAnswer(metadata.question, metadata.groundTruthAnswer, hypothesis, metadata.questionType);
         
         return {
             questionId: metadata.questionId,

@@ -68,11 +68,29 @@ From `memorybench/benchmarks/LongMemEval`:
 
 To evaluate results, use the scripts in `scripts/evaluate/`.
 
+### Single Run Evaluation
+
+From `memorybench/benchmarks/LongMemEval`:
+
+```bash
+bun run scripts/evaluate/evaluate.ts <runId> [answeringModel]
+```
+
+Examples:
+```bash
+bun run scripts/evaluate/evaluate.ts run1 gpt-4o
+bun run scripts/evaluate/evaluate.ts run1 gpt-5
+bun run scripts/evaluate/evaluate.ts run1 gemini-3-pro-preview
+```
+
+All evaluations use `gpt-4o` as the fixed "gold standard" judge.
+
 ### Batch Evaluation
 
 From `memorybench/benchmarks/LongMemEval`:
+
 ```bash
-./scripts/evaluate/evaluate-batch.sh --runId=<runId> [--questionType=<questionType>] [--startPosition=<startPos>] [--endPosition=<endPos>]
+./scripts/evaluate/evaluate-batch.sh --runId=<runId> --answeringModel=<model> [--questionType=<questionType>] [--startPosition=<startPos>] [--endPosition=<endPos>]
 ```
 
 ## Available Question Types
