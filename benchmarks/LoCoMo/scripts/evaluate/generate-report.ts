@@ -3,6 +3,7 @@ LoCoMo Report Generator
 Generates aggregate accuracy report from evaluation results.
 
 Usage: bun run generate-report.ts <runId>
+       bun run generate-report.ts --all
 */
 
 import { readFileSync, writeFileSync, existsSync, readdirSync, mkdirSync } from 'fs';
@@ -24,10 +25,10 @@ const CATEGORY_NAMES: { [key: number]: string } = {
 const args = process.argv.slice(2);
 if (args.length < 1) {
     console.error("Usage: bun run generate-report.ts <runId>");
+    console.error("bun run generate-report.ts --all");
     process.exit(1);
 }
 
-const runId = args[0]!;
 const resultsDir = join(__dirname, '../../results');
 
 if (!existsSync(resultsDir)) {
@@ -35,17 +36,37 @@ if (!existsSync(resultsDir)) {
     process.exit(1);
 }
 
-// Find result files for this run
-const resultFiles = readdirSync(resultsDir)
-    .filter(f => f.startsWith('result-') && f.includes(`-${runId}`) && f.endsWith('.json'))
-    .sort();
+// Determine if we're processing all files or a specific run
+const isAllMode = args[0] === '--all';
+let resultFiles: string[];
+let runId: string | null = null;
 
-if (resultFiles.length === 0) {
-    console.error(`No result files found for run: ${runId}`);
-    process.exit(1);
+if (isAllMode) {
+    // Find all result files
+    resultFiles = readdirSync(resultsDir)
+        .filter(f => f.startsWith('result-') && f.endsWith('.json'))
+        .sort();
+    
+    if (resultFiles.length === 0) {
+        console.error('No result files found');
+        process.exit(1);
+    }
+    
+    console.log(`Found ${resultFiles.length} result files\n`);
+} else {
+    // Find result files for this specific run
+    runId = args[0]!;
+    resultFiles = readdirSync(resultsDir)
+        .filter(f => f.startsWith('result-') && f.includes(`-${runId}`) && f.endsWith('.json'))
+        .sort();
+    
+    if (resultFiles.length === 0) {
+        console.error(`No result files found for run: ${runId}`);
+        process.exit(1);
+    }
+    
+    console.log(`Found ${resultFiles.length} result files for ${runId}\n`);
 }
-
-console.log(`Found ${resultFiles.length} result files for ${runId}\n`);
 
 interface ConvStats {
     convId: string;
@@ -145,7 +166,11 @@ lines.push('╔═════════════════════�
 lines.push('║              🏆 LOCOMO AGGREGATE SUMMARY 🏆                                  ║');
 lines.push('╚══════════════════════════════════════════════════════════════════════════════╝');
 lines.push('');
-lines.push(`Run ID: ${runId}`);
+if (runId) {
+    lines.push(`Run ID: ${runId}`);
+} else {
+    lines.push('All Conversations (All Runs)');
+}
 lines.push('');
 lines.push('┌─ OVERALL METRICS ────────────────────────────────────────────────────────────┐');
 lines.push(`│  Conversations:       ${allStats.length.toString().padStart(5)}                                              │`);
@@ -194,7 +219,8 @@ const report = lines.join('\n');
 console.log(report);
 
 // Save report
-const reportPath = join(resultsDir, `aggregate-${runId}.txt`);
+const reportFileName = runId ? `aggregate-${runId}.txt` : 'aggregate-all.txt';
+const reportPath = join(resultsDir, reportFileName);
 writeFileSync(reportPath, report);
 console.log(`✓ Report saved to: ${reportPath}`);
 

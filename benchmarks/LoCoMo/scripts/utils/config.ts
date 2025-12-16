@@ -13,6 +13,7 @@ export interface Config {
     baseUrl: string;
     openaiApiKey: string;
     googleApiKey: string;
+    anthropicApiKey: string;
     judgeModel: string;
     generatorModel: string;
 }
@@ -22,6 +23,7 @@ export const config: Config = {
     baseUrl: process.env.SUPERMEMORY_API_URL || "https://api.supermemory.ai",
     openaiApiKey: process.env.OPENAI_API_KEY || "",
     googleApiKey: process.env.GOOGLE_GENERATIVE_AI_API_KEY || "",
+    anthropicApiKey: process.env.ANTHROPIC_API_KEY || "",
     judgeModel: process.env.JUDGE_MODEL || "gpt-4o",
     generatorModel: process.env.GENERATOR_MODEL || "gemini-2.0-flash",
 };
@@ -35,6 +37,7 @@ export function validateConfig(required: (keyof Config)[]) {
                 : key === 'baseUrl' ? 'SUPERMEMORY_API_URL'
                 : key === 'openaiApiKey' ? 'OPENAI_API_KEY'
                 : key === 'googleApiKey' ? 'GOOGLE_GENERATIVE_AI_API_KEY'
+                : key === 'anthropicApiKey' ? 'ANTHROPIC_API_KEY'
                 : key.toUpperCase();
             console.error(`  - ${envVar}`);
         });

@@ -11,6 +11,7 @@ import { fileURLToPath } from 'url';
 import { config, validateConfig } from '../utils/config.ts';
 import { google } from '@ai-sdk/google';
 import { openai } from '@ai-sdk/openai';
+import { anthropic } from '@ai-sdk/anthropic';
 import { generateText } from 'ai';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -22,6 +23,8 @@ function getModel(modelName: string) {
         return openai(modelName);
     } else if (modelName.startsWith('gemini')) {
         return google(modelName);
+    } else if (modelName.startsWith('claude')) {
+        return anthropic(modelName);
     } else {
         // Default to OpenAI for unknown models
         return openai(modelName);
@@ -30,11 +33,15 @@ function getModel(modelName: string) {
 
 // Validate config - only require keys for the providers we're using
 const requiredKeys: (keyof typeof config)[] = ['apiKey', 'baseUrl'];
-if (config.judgeModel.startsWith('gpt') || config.judgeModel.startsWith('o1') || config.generatorModel.startsWith('gpt') || config.generatorModel.startsWith('o1')) {
+if (config.judgeModel.startsWith('gpt') || config.judgeModel.startsWith('o1') || config.judgeModel.startsWith('o3') || 
+    config.generatorModel.startsWith('gpt') || config.generatorModel.startsWith('o1') || config.generatorModel.startsWith('o3')) {
     requiredKeys.push('openaiApiKey');
 }
 if (config.judgeModel.startsWith('gemini') || config.generatorModel.startsWith('gemini')) {
     requiredKeys.push('googleApiKey');
+}
+if (config.judgeModel.startsWith('claude') || config.generatorModel.startsWith('claude')) {
+    requiredKeys.push('anthropicApiKey');
 }
 validateConfig(requiredKeys);
 
