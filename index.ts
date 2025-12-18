@@ -13,7 +13,7 @@ const BENCHMARK_DATA: Record<
 	BenchmarkType,
 	BenchmarkRegistry[BenchmarkType][]
 > = {
-	RAG: ragBenchmarkData,
+	"RAG-template-benchmark": ragBenchmarkData,
 };
 
 interface CLIArgs {
@@ -153,8 +153,8 @@ Options:
   --providers, -p   Providers to test (${Object.keys(PROVIDERS).join(", ")})
 
 Examples:
-  bun run index.ts --benchmarks RAG --providers ContextualRetrieval AQRAG
-  bun run index.ts -b RAG -p ContextualRetrieval
+  bun run index.ts --benchmarks RAG-template-benchmark --providers ContextualRetrieval AQRAG
+  bun run index.ts -b RAG-template-benchmark -p ContextualRetrieval
       `);
 			return;
 		}
