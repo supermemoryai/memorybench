@@ -1,0 +1,31 @@
+{
+  "manifest_version": "1",
+  "provider": {
+    "name": "IncompleteProvider",
+    "type": "intelligent_memory"
+  },
+  "capabilities": {
+    "core_operations": {
+      "add_memory": true,
+      "retrieve_memory": true,
+      "delete_memory": true
+    },
+    "optional_operations": {},
+    "system_flags": {
+      "async_indexing": false
+    },
+    "intelligence_flags": {
+      "auto_extraction": false,
+      "graph_support": false
+    }
+  },
+  "semantic_properties": {
+    "update_strategy": "immediate",
+    "delete_strategy": "immediate"
+  },
+  "conformance_tests": {
+    "expected_behavior": {
+      "convergence_wait_ms": 0
+    }
+  }
+}
