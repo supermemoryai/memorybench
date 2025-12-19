@@ -1,16 +1,12 @@
 import type { BenchmarkRegistry, BenchmarkType } from "./benchmarks";
 import { ragBenchmarkData } from "./benchmarks";
+import type { TemplateType } from "./providers/_template";
 import {
-	AQRAGProvider,
-	ContextualRetrievalProvider,
-	type TemplateType,
-} from "./providers";
-
-// Provider registry
-const PROVIDERS: Record<string, TemplateType> = {
-	ContextualRetrieval: ContextualRetrievalProvider,
-	AQRAG: AQRAGProvider,
-};
+	loadAllProviders,
+	formatProviderTable,
+	formatProviderJson,
+	formatValidationError,
+} from "./src/loaders/providers";
 
 // Benchmark data registry
 const BENCHMARK_DATA: Record<
@@ -55,7 +51,7 @@ function parseCliArgs(): CLIArgs {
 	return { benchmarks, providers };
 }
 
-function validateArgs(args: CLIArgs): void {
+function validateArgs(args: CLIArgs, validProviders: string[]): void {
 	if (args.benchmarks.length === 0) {
 		throw new Error(
 			"No benchmarks specified. Use --benchmarks to specify at least one benchmark.",
@@ -79,13 +75,33 @@ function validateArgs(args: CLIArgs): void {
 	}
 
 	// Validate provider names
-	const validProviders = Object.keys(PROVIDERS);
 	for (const provider of args.providers) {
 		if (!validProviders.includes(provider)) {
 			throw new Error(
 				`Invalid provider: ${provider}. Available providers: ${validProviders.join(", ")}`,
 			);
 		}
+	}
+}
+
+async function loadProviderRegistry(): Promise<Record<string, TemplateType>> {
+	const { AQRAGProvider, ContextualRetrievalProvider } =
+		await import("./providers");
+	return {
+		ContextualRetrieval: ContextualRetrievalProvider,
+		AQRAG: AQRAGProvider,
+	};
+}
+
+async function getProviderNamesForHelp(): Promise<string> {
+	try {
+		const result = await loadAllProviders();
+		const names = Array.from(
+			new Set(result.providers.map((provider) => provider.manifest.provider.name)),
+		).sort();
+		return names.length > 0 ? names.join(", ") : "none";
+	} catch {
+		return "none";
 	}
 }
 
@@ -140,30 +156,75 @@ async function runBenchmark(
 	}
 }
 
+/**
+ * Handle the 'list providers' subcommand (T037-T040)
+ */
+async function handleListProviders(jsonOutput: boolean): Promise<void> {
+	const result = await loadAllProviders();
+
+	// Report warnings
+	for (const warning of result.warnings) {
+		console.error(warning);
+	}
+
+	// Report errors
+	if (result.errors.length > 0) {
+		console.error("\nValidation errors:");
+		for (const error of result.errors) {
+			console.error(formatValidationError(error));
+		}
+	}
+
+	// Output providers
+	if (jsonOutput) {
+		console.log(formatProviderJson(result.providers));
+	} else {
+		console.log(formatProviderTable(result.providers));
+	}
+}
+
 async function main(): Promise<void> {
 	try {
+		const rawArgs = Bun.argv.slice(2);
+
+		// Check for 'list providers' subcommand (T037)
+		if (rawArgs[0] === "list" && rawArgs[1] === "providers") {
+			const jsonOutput = rawArgs.includes("--json"); // T038
+			await handleListProviders(jsonOutput);
+			return;
+		}
+
 		const args = parseCliArgs();
 
 		// Show help if no arguments
 		if (args.benchmarks.length === 0 && args.providers.length === 0) {
+			const providerNames = await getProviderNamesForHelp();
 			console.log(`
 Memory Benchmark CLI
 
 Usage:
   bun run index.ts --benchmarks <benchmark1> [benchmark2...] --providers <provider1> [provider2...]
+  bun run index.ts list providers [--json]
+
+Commands:
+  list providers      List all configured provider manifests
+    --json            Output in JSON format for machine parsing
 
 Options:
   --benchmarks, -b  Benchmark types to run (${Object.keys(BENCHMARK_DATA).join(", ")})
-  --providers, -p   Providers to test (${Object.keys(PROVIDERS).join(", ")})
+  --providers, -p   Providers to test (${providerNames})
 
 Examples:
   bun run index.ts --benchmarks RAG-template-benchmark --providers ContextualRetrieval AQRAG
   bun run index.ts -b RAG-template-benchmark -p ContextualRetrieval
+  bun run index.ts list providers
+  bun run index.ts list providers --json
       `);
 			return;
 		}
 
-		validateArgs(args);
+		const providerRegistry = await loadProviderRegistry();
+		validateArgs(args, Object.keys(providerRegistry));
 
 		console.log("=� Starting memory benchmark tests...");
 		console.log(`Benchmarks: ${args.benchmarks.join(", ")}`);
@@ -175,7 +236,7 @@ Examples:
 			const benchmarkData = BENCHMARK_DATA[benchmarkType];
 
 			for (const providerName of args.providers) {
-				const provider = PROVIDERS[providerName]!;
+				const provider = providerRegistry[providerName]!;
 				await runBenchmark(
 					benchmarkType,
 					benchmarkData,

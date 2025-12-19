@@ -113,7 +113,35 @@ For more information, read the Bun API docs in `node_modules/bun-types/docs/**.m
 - N/A (tooling config only) (002-contributor-tooling)
 - TypeScript 5.x (Bun runtime) + None beyond TypeScript - pure type definitions (003-core-types)
 - N/A (type definitions only, no runtime storage) (003-core-types)
+- TypeScript 5.x (Bun runtime) + zod@4.1.9 (already installed), Bun.file for I/O (004-provider-manifest)
+- File-based JSON manifests (`providers/**/manifest.json`) (004-provider-manifest)
 
 ## Recent Changes
+- 004-provider-manifest: Added provider manifest schema with Zod validation, CLI list command, and semantic property accessors
 - 003-core-types: Added TypeScript 5.x (Bun runtime) + None beyond TypeScript - pure type definitions
 - 001-v01-scope-doc: Added Markdown (documentation only) + N/A (no code dependencies)
+
+## Provider Manifest System (004-provider-manifest)
+
+New provider manifest types and loader for config-driven provider onboarding:
+
+### Types (`types/manifest.ts`)
+- `ProviderManifest` - Main manifest type with capabilities, semantic properties, conformance tests
+- `LoadedProvider` - Loaded manifest with path and content hash
+- `ManifestValidationError`, `FieldError` - Structured validation errors
+- `SUPPORTED_MANIFEST_VERSIONS` - Currently `["1"]`
+
+### Loader (`src/loaders/providers.ts`)
+- `loadAllProviders()` - Discover and validate all `providers/**/manifest.json` files
+- `validateManifest()` - Validate JSON against schema
+- `formatValidationError()` - Format errors with field, rule, expected value (FR-009)
+- `formatProviderTable()` / `formatProviderJson()` - CLI output formatting
+- `getUpdateStrategy()`, `getDeleteStrategy()`, `getConvergenceWaitMs()` - Semantic property accessors
+
+### CLI (`index.ts`)
+- `bun run index.ts list providers` - List all configured providers in table format
+- `bun run index.ts list providers --json` - List in JSON format for machine parsing
+
+### Tests (`tests/manifest/`)
+- Valid/invalid manifest fixtures in `fixtures/`
+- Unit tests for schema validation, CLI output, semantic properties
