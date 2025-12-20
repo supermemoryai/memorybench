@@ -3,15 +3,13 @@
  * Verifies all usage patterns compile and work correctly
  */
 
-import {
-	ScopeContext,
+import type {
 	MemoryRecord,
-	RetrievalItem,
 	ProviderCapabilities,
-	isScopeContext,
-	isMemoryRecord,
-	isValidScore,
+	RetrievalItem,
+	ScopeContext,
 } from "./core";
+import { isMemoryRecord, isScopeContext, isValidScore } from "./core";
 
 // Test 1: Creating a ScopeContext
 const minimalScope: ScopeContext = {

@@ -9,6 +9,7 @@
  * @see specs/005-provider-contract/spec.md
  */
 
+import type { TemplateType } from "../providers/_template";
 import type {
 	MemoryRecord,
 	ProviderCapabilities,
@@ -17,7 +18,6 @@ import type {
 } from "./core";
 import { isScopeContext } from "./core";
 import type { ProviderManifest } from "./manifest";
-import type { TemplateType } from "../providers/_template";
 
 // =============================================================================
 // BaseProvider Interface (T001, T002) - Universal Provider Contract
@@ -238,7 +238,7 @@ export interface ProviderRegistryResult {
  * ```
  */
 export class UnsupportedOperationError extends Error {
-	readonly name = "UnsupportedOperationError";
+	override readonly name = "UnsupportedOperationError";
 
 	constructor(
 		/** Provider that doesn't support the operation */
@@ -365,10 +365,18 @@ export function validateScopeContext(scope: unknown): ScopeContext {
 	}
 
 	// Validate optional fields - they must be string if present
-	if ("session_id" in obj && obj.session_id !== undefined && typeof obj.session_id !== "string") {
+	if (
+		"session_id" in obj &&
+		obj.session_id !== undefined &&
+		typeof obj.session_id !== "string"
+	) {
 		issues.push("invalid session_id (expected string or undefined)");
 	}
-	if ("namespace" in obj && obj.namespace !== undefined && typeof obj.namespace !== "string") {
+	if (
+		"namespace" in obj &&
+		obj.namespace !== undefined &&
+		typeof obj.namespace !== "string"
+	) {
 		issues.push("invalid namespace (expected string or undefined)");
 	}
 
