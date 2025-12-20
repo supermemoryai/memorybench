@@ -51,7 +51,9 @@ async function verifySchemas(): Promise<boolean> {
 
 	console.log("Schemas found:");
 	console.log(
-		foundSchemas.size > 0 ? formatList([...foundSchemas]) : "(none)",
+		foundSchemas.size > 0
+			? formatList([...foundSchemas] as string[])
+			: "(none)",
 	);
 	console.log("\nTables found:");
 	if (tableRows.length === 0) {
