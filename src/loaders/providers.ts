@@ -21,6 +21,77 @@ import {
 import type { z } from "zod";
 
 // =============================================================================
+// Structured Logging (T009, FR-022, research R3)
+// =============================================================================
+
+/** Log entry structure for structured JSON logging */
+export interface LogEntry {
+	/** ISO 8601 timestamp */
+	timestamp: string;
+	/** Log severity level */
+	level: "DEBUG" | "INFO" | "WARN" | "ERROR";
+	/** Provider name (if applicable) */
+	provider?: string;
+	/** Event type/name */
+	event: string;
+	/** Additional structured data */
+	details?: Record<string, unknown>;
+}
+
+/**
+ * Emit a structured JSON log entry.
+ * Routes to appropriate console method based on level.
+ * (T009, FR-022)
+ *
+ * @param entry - Structured log entry
+ *
+ * @example
+ * ```typescript
+ * log({
+ *   timestamp: new Date().toISOString(),
+ *   level: 'INFO',
+ *   provider: 'my-provider',
+ *   event: 'provider_load_start',
+ *   details: { path: '/path/to/provider' }
+ * });
+ * ```
+ */
+export function log(entry: LogEntry): void {
+	const line = JSON.stringify(entry);
+	switch (entry.level) {
+		case "ERROR":
+			console.error(line);
+			break;
+		case "WARN":
+			console.warn(line);
+			break;
+		default:
+			console.log(line);
+	}
+}
+
+/**
+ * Helper to create a log entry with automatic timestamp.
+ * Reduces boilerplate in logging calls.
+ *
+ * @param level - Log level
+ * @param event - Event type
+ * @param options - Optional provider name and details
+ */
+export function createLogEntry(
+	level: LogEntry["level"],
+	event: string,
+	options?: { provider?: string; details?: Record<string, unknown> },
+): LogEntry {
+	return {
+		timestamp: new Date().toISOString(),
+		level,
+		event,
+		...options,
+	};
+}
+
+// =============================================================================
 // Types
 // =============================================================================
 
@@ -492,6 +563,126 @@ export function getDeleteStrategy(
  */
 export function getConvergenceWaitMs(manifest: ProviderManifest): number {
 	return manifest.conformance_tests.expected_behavior.convergence_wait_ms;
+}
+
+// =============================================================================
+// Provider Adapter Loading (005-provider-contract: T017-T020)
+// =============================================================================
+
+/**
+ * Discover all provider directories containing index.ts adapters.
+ * Searches recursively in the providers directory for index.ts files.
+ * (T017, FR-010)
+ *
+ * @param baseDir - Base directory to search (defaults to process.cwd())
+ * @returns Array of absolute paths to provider directories
+ */
+export async function discoverProviderDirectories(
+	baseDir: string = process.cwd(),
+): Promise<string[]> {
+	const glob = new Glob("providers/**/index.ts");
+	const directories: string[] = [];
+
+	for await (const file of glob.scan({ cwd: baseDir, absolute: true })) {
+		// Get directory path by removing /index.ts
+		const dirPath = file.replace(/\/index\.ts$/, "");
+		directories.push(dirPath);
+	}
+
+	return directories;
+}
+
+/**
+ * Load a provider adapter from index.ts using dynamic import.
+ * Automatically detects BaseProvider vs TemplateType and wraps legacy providers.
+ * (T018, FR-010, FR-019, research R1)
+ *
+ * @param adapterPath - Absolute path to provider's index.ts file
+ * @param providerName - Provider name from manifest (for LegacyProviderAdapter)
+ * @returns Loaded BaseProvider instance
+ * @throws Error if import fails or export is invalid
+ */
+export async function loadProviderAdapter(
+	adapterPath: string,
+	providerName: string,
+): Promise<import("../../types/provider").BaseProvider> {
+	const { isBaseProvider, isLegacyTemplate, LegacyProviderAdapter } =
+		await import("../../types/provider");
+
+	try {
+		// Dynamic import of the provider module
+		const module = await import(adapterPath);
+		const exported = module.default;
+
+		if (!exported) {
+			throw new Error(
+				`Provider at ${adapterPath} does not have a default export`,
+			);
+		}
+
+		// Check if it's already a BaseProvider
+		if (isBaseProvider(exported)) {
+			return exported;
+		}
+
+		// Check if it's a legacy TemplateType
+		if (isLegacyTemplate(exported)) {
+			log(
+				createLogEntry("INFO", "provider_legacy_wrap", {
+					provider: providerName,
+					details: { path: adapterPath },
+				}),
+			);
+			return new LegacyProviderAdapter(exported, providerName);
+		}
+
+		// Neither interface recognized
+		throw new Error(
+			`Provider at ${adapterPath} does not implement BaseProvider or TemplateType interface`,
+		);
+	} catch (error) {
+		throw new Error(
+			`Failed to load provider adapter from ${adapterPath}: ${error instanceof Error ? error.message : String(error)}`,
+		);
+	}
+}
+
+/**
+ * Validate that an adapter has all required methods.
+ * Checks for add_memory, retrieve_memory, delete_memory.
+ * (T019, FR-013)
+ *
+ * @param adapter - Provider adapter to validate
+ * @returns Array of missing method names (empty if valid)
+ */
+export function validateRequiredMethods(
+	adapter: import("../../types/provider").BaseProvider,
+): string[] {
+	const requiredMethods = ["add_memory", "retrieve_memory", "delete_memory"];
+	const missing: string[] = [];
+
+	for (const method of requiredMethods) {
+		if (typeof (adapter as any)[method] !== "function") {
+			missing.push(method);
+		}
+	}
+
+	return missing;
+}
+
+/**
+ * Validate that adapter name matches manifest provider.name.
+ * (T020, FR-012)
+ *
+ * @param adapter - Provider adapter
+ * @param manifestName - Expected name from manifest
+ * @returns true if names match, false otherwise
+ */
+export function validateNameMatch(
+	adapter: import("../../types/provider").BaseProvider,
+	manifestName: string,
+): boolean {
+	return adapter.name === manifestName;
 }
 
 // =============================================================================
