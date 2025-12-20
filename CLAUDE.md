@@ -117,19 +117,20 @@ bun --hot ./index.ts
 For more information, read the Bun API docs in `node_modules/bun-types/docs/**.md`.
 
 ## Active Technologies
-- Markdown (documentation only) + N/A (no code dependencies) (001-v01-scope-doc)
-- N/A (file-based documentation) (001-v01-scope-doc)
-- TypeScript 5.x (Bun runtime) + Biome (lint+format), Bun (runtime, test runner) (002-contributor-tooling)
-- N/A (tooling config only) (002-contributor-tooling)
-- TypeScript 5.x (Bun runtime) + None beyond TypeScript - pure type definitions (003-core-types)
-- N/A (type definitions only, no runtime storage) (003-core-types)
-- TypeScript 5.x (Bun runtime) + zod@4.1.9 (already installed), Bun.file for I/O (004-provider-manifest)
-- File-based JSON manifests (`providers/**/manifest.json`) (004-provider-manifest)
+
+**Base Stack**: TypeScript 5.x with Bun runtime
+
+**Features**:
+- **001-v01-scope-doc**: Markdown documentation
+- **002-contributor-tooling**: Biome (lint+format), Bun test runner
+- **003-core-types**: Pure type definitions (MemoryRecord, ScopeContext, RetrievalItem, ProviderCapabilities)
+- **004-provider-manifest**: Zod schema validation, JSON manifests at `providers/**/manifest.json`
+- **005-provider-contract**: BaseProvider interface, type guards, dynamic provider loading via `providers/**/index.ts`
 
 ## Recent Changes
-- 004-provider-manifest: Added provider manifest schema with Zod validation, CLI list command, and semantic property accessors
-- 003-core-types: Added TypeScript 5.x (Bun runtime) + None beyond TypeScript - pure type definitions
-- 001-v01-scope-doc: Added Markdown (documentation only) + N/A (no code dependencies)
+- **005-provider-contract**: Universal provider contract with BaseProvider interface and loading infrastructure
+- **004-provider-manifest**: Provider manifest schema with Zod validation and CLI commands
+- **003-core-types**: Core memory operation type definitions
 
 ## Provider Manifest System (004-provider-manifest)
 
