@@ -35,3 +35,39 @@ export {
 	isLegacyTemplate,
 	hasCapability,
 } from "./provider";
+
+// Benchmark types (006-benchmark-interface)
+export type {
+	BenchmarkMeta,
+	BenchmarkCase,
+	CaseMetadata,
+	CaseResult,
+	CaseStatus,
+	ErrorInfo,
+	Benchmark,
+	LoadedBenchmarkEntry,
+	BenchmarkWarningCode,
+	BenchmarkLoadWarning,
+	BenchmarkErrorCode,
+	BenchmarkLoadError,
+	BenchmarkRegistryResult,
+} from "./benchmark";
+export { isBenchmark } from "./benchmark";
+
+// Benchmark manifest types (data-driven benchmarks)
+export type {
+	BenchmarkManifest,
+	IngestionConfig,
+	EvaluationConfig,
+	QueryConfig,
+	SimpleIngestionConfig,
+	SessionBasedIngestionConfig,
+	ExactMatchEvaluationConfig,
+	LLMJudgeEvaluationConfig,
+} from "./benchmark-manifest";
+export {
+	validateBenchmarkManifest,
+	formatManifestErrors,
+	BenchmarkManifestSchema,
+	SUPPORTED_BENCHMARK_MANIFEST_VERSIONS,
+} from "./benchmark-manifest";
