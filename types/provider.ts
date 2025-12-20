@@ -480,3 +480,18 @@ export class LegacyProviderAdapter implements BaseProvider {
 		throw new UnsupportedOperationError(this.name, "delete_memory");
 	}
 }
+
+/**
+ * Check if a provider has a specific capability.
+ * (T045, FR-014, research R6)
+ *
+ * @param provider - BaseProvider instance to check
+ * @param operation - Operation name to check for
+ * @returns true if the provider has the operation method, false otherwise
+ */
+export function hasCapability(
+	provider: BaseProvider,
+	operation: keyof BaseProvider,
+): boolean {
+	return typeof provider[operation] === "function";
+}
