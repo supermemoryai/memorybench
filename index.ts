@@ -2,10 +2,15 @@ import type { BenchmarkRegistry, BenchmarkType } from "./benchmarks";
 import { ragBenchmarkData } from "./benchmarks";
 import type { TemplateType } from "./providers/_template";
 import {
-	loadAllProviders,
-	formatProviderTable,
+	BenchmarkRegistry as NewBenchmarkRegistry,
+	formatBenchmarkJson,
+	formatBenchmarkTable,
+} from "./src/loaders/benchmarks";
+import {
 	formatProviderJson,
+	formatProviderTable,
 	formatValidationError,
+	loadAllProviders,
 } from "./src/loaders/providers";
 
 // Benchmark data registry
@@ -85,8 +90,9 @@ function validateArgs(args: CLIArgs, validProviders: string[]): void {
 }
 
 async function loadProviderRegistry(): Promise<Record<string, TemplateType>> {
-	const { AQRAGProvider, ContextualRetrievalProvider } =
-		await import("./providers");
+	const { AQRAGProvider, ContextualRetrievalProvider } = await import(
+		"./providers"
+	);
 	return {
 		ContextualRetrieval: ContextualRetrievalProvider,
 		AQRAG: AQRAGProvider,
@@ -97,7 +103,9 @@ async function getProviderNamesForHelp(): Promise<string> {
 	try {
 		const result = await loadAllProviders();
 		const names = Array.from(
-			new Set(result.providers.map((provider) => provider.manifest.provider.name)),
+			new Set(
+				result.providers.map((provider) => provider.manifest.provider.name),
+			),
 		).sort();
 		return names.length > 0 ? names.join(", ") : "none";
 	} catch {
@@ -157,6 +165,48 @@ async function runBenchmark(
 }
 
 /**
+ * Handle the 'list benchmarks' subcommand (T036-T040)
+ */
+async function handleListBenchmarks(jsonOutput: boolean): Promise<void> {
+	const registry = NewBenchmarkRegistry.getInstance();
+	const result = await registry.initialize();
+
+	// Report errors
+	if (result.errors.length > 0) {
+		console.error("\nBenchmark loading errors:");
+		for (const error of result.errors) {
+			console.error(`[${error.code}] ${error.benchmark}: ${error.message}`);
+		}
+	}
+
+	// Report warnings
+	if (result.warnings.length > 0) {
+		console.error("\nWarnings:");
+		for (const warning of result.warnings) {
+			console.error(
+				`[${warning.code}] ${warning.benchmark}: ${warning.message}`,
+			);
+		}
+	}
+
+	// Output benchmarks
+	if (result.benchmarks.length === 0) {
+		console.log("\nNo benchmarks found.");
+		console.log(
+			"Create a benchmark by adding a directory under benchmarks/ with an index.ts file.",
+		);
+		console.log("See specs/006-benchmark-interface/quickstart.md for details.");
+		return;
+	}
+
+	if (jsonOutput) {
+		console.log(formatBenchmarkJson(result.benchmarks));
+	} else {
+		console.log("\n" + formatBenchmarkTable(result.benchmarks));
+	}
+}
+
+/**
  * Handle the 'list providers' subcommand (T037-T040)
  */
 async function handleListProviders(jsonOutput: boolean): Promise<void> {
@@ -187,6 +237,13 @@ async function main(): Promise<void> {
 	try {
 		const rawArgs = Bun.argv.slice(2);
 
+		// Check for 'list benchmarks' subcommand (T038)
+		if (rawArgs[0] === "list" && rawArgs[1] === "benchmarks") {
+			const jsonOutput = rawArgs.includes("--json");
+			await handleListBenchmarks(jsonOutput);
+			return;
+		}
+
 		// Check for 'list providers' subcommand (T037)
 		if (rawArgs[0] === "list" && rawArgs[1] === "providers") {
 			const jsonOutput = rawArgs.includes("--json"); // T038
@@ -204,9 +261,11 @@ Memory Benchmark CLI
 
 Usage:
   bun run index.ts --benchmarks <benchmark1> [benchmark2...] --providers <provider1> [provider2...]
+  bun run index.ts list benchmarks [--json]
   bun run index.ts list providers [--json]
 
 Commands:
+  list benchmarks     List all discovered benchmarks
   list providers      List all configured provider manifests
     --json            Output in JSON format for machine parsing
 
@@ -217,6 +276,8 @@ Options:
 Examples:
   bun run index.ts --benchmarks RAG-template-benchmark --providers ContextualRetrieval AQRAG
   bun run index.ts -b RAG-template-benchmark -p ContextualRetrieval
+  bun run index.ts list benchmarks
+  bun run index.ts list benchmarks --json
   bun run index.ts list providers
   bun run index.ts list providers --json
       `);
