@@ -9,16 +9,16 @@
  */
 
 import { Glob } from "bun";
+import type { z } from "zod";
 import {
+	type FieldError,
+	type LoadedProvider,
+	type ManifestValidationError,
+	type ProviderManifest,
 	ProviderManifestV1Schema,
 	SUPPORTED_MANIFEST_VERSIONS,
 	isSupportedVersion,
-	type ProviderManifest,
-	type LoadedProvider,
-	type ManifestValidationError,
-	type FieldError,
 } from "../../types/manifest";
-import type { z } from "zod";
 
 // =============================================================================
 // Structured Logging (T009, FR-022, research R3)
@@ -176,11 +176,7 @@ export function validateManifest(
 	manifestPath: string,
 ): ValidationResult {
 	// First check manifest_version before full validation (FR-013)
-	if (
-		typeof json === "object" &&
-		json !== null &&
-		"manifest_version" in json
-	) {
+	if (typeof json === "object" && json !== null && "manifest_version" in json) {
 		const version = (json as Record<string, unknown>).manifest_version;
 		if (typeof version === "string" && !isSupportedVersion(version)) {
 			return {
@@ -431,8 +427,7 @@ export async function loadAllProviders(
 						field: "_file",
 						rule: "parse_error",
 						expected: "Valid JSON file",
-						received:
-							error instanceof Error ? error.message : String(error),
+						received: error instanceof Error ? error.message : String(error),
 					},
 				],
 			});
@@ -596,10 +591,15 @@ export async function discoverProviderDirectories(
 	}
 
 	// Also scan for directories with manifest.json (to catch missing-adapter cases)
-	const manifestPattern = isTestFixtures ? "*/manifest.json" : "providers/**/manifest.json";
+	const manifestPattern = isTestFixtures
+		? "*/manifest.json"
+		: "providers/**/manifest.json";
 	const manifestGlob = new Glob(manifestPattern);
 
-	for await (const file of manifestGlob.scan({ cwd: baseDir, absolute: true })) {
+	for await (const file of manifestGlob.scan({
+		cwd: baseDir,
+		absolute: true,
+	})) {
 		const dirPath = file.replace(/\/manifest\.json$/, "");
 		directories.add(dirPath);
 	}
@@ -718,16 +718,25 @@ export function validateDeclaredOptionalMethods(
 
 	// Check each optional operation declared as true
 	// Use typeof check to ensure property is actually a function
-	if (optionalOps.update_memory && typeof adapter.update_memory !== "function") {
+	if (
+		optionalOps.update_memory &&
+		typeof adapter.update_memory !== "function"
+	) {
 		missing.push("update_memory");
 	}
-	if (optionalOps.list_memories && typeof adapter.list_memories !== "function") {
+	if (
+		optionalOps.list_memories &&
+		typeof adapter.list_memories !== "function"
+	) {
 		missing.push("list_memories");
 	}
 	if (optionalOps.reset_scope && typeof adapter.reset_scope !== "function") {
 		missing.push("reset_scope");
 	}
-	if (optionalOps.get_capabilities && typeof adapter.get_capabilities !== "function") {
+	if (
+		optionalOps.get_capabilities &&
+		typeof adapter.get_capabilities !== "function"
+	) {
 		missing.push("get_capabilities");
 	}
 
@@ -840,10 +849,7 @@ export class ProviderRegistry {
 
 				// Use loadManifest() for better JSON error messages (position, line info)
 				const manifestJson = await loadManifest(manifestPath);
-				const manifestResult = validateManifest(
-					manifestJson,
-					manifestPath,
-				);
+				const manifestResult = validateManifest(manifestJson, manifestPath);
 
 				if (!manifestResult.success) {
 					log(
@@ -914,8 +920,10 @@ export class ProviderRegistry {
 				}
 
 				// Validate declared optional methods (T042, FR-014)
-				const missingDeclaredMethods =
-					validateDeclaredOptionalMethods(adapter, manifest);
+				const missingDeclaredMethods = validateDeclaredOptionalMethods(
+					adapter,
+					manifest,
+				);
 				if (missingDeclaredMethods.length > 0) {
 					log(
 						createLogEntry("ERROR", "provider_load_error", {
@@ -953,8 +961,7 @@ export class ProviderRegistry {
 						createLogEntry("WARN", "provider_capability_mismatch", {
 							provider: manifest.provider.name,
 							details: {
-								reason:
-									"adapter has capabilities not declared in manifest",
+								reason: "adapter has capabilities not declared in manifest",
 								undeclared_capabilities: undeclared,
 								suggestion:
 									"Update manifest.json to declare these capabilities",
@@ -980,12 +987,11 @@ export class ProviderRegistry {
 				}
 
 				// Store loaded provider
-				const entry: import("../../types/provider").LoadedProviderEntry =
-					{
-						adapter,
-						manifest,
-						path: providerDir,
-					};
+				const entry: import("../../types/provider").LoadedProviderEntry = {
+					adapter,
+					manifest,
+					path: providerDir,
+				};
 
 				this.providers.set(manifest.provider.name, entry);
 
@@ -1001,10 +1007,7 @@ export class ProviderRegistry {
 						provider: providerDir,
 						details: {
 							reason: "unexpected error",
-							error:
-								error instanceof Error
-									? error.message
-									: String(error),
+							error: error instanceof Error ? error.message : String(error),
 						},
 					}),
 				);

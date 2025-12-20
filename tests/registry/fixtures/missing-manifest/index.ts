@@ -5,12 +5,12 @@
  * Should produce "missing manifest" warning.
  */
 
-import type { BaseProvider } from "../../../../types/provider";
 import type {
-	ScopeContext,
 	MemoryRecord,
 	RetrievalItem,
+	ScopeContext,
 } from "../../../../types/core";
+import type { BaseProvider } from "../../../../types/provider";
 
 const missingManifestProvider: BaseProvider = {
 	name: "missing-manifest",
@@ -31,7 +31,7 @@ const missingManifestProvider: BaseProvider = {
 	async retrieve_memory(
 		scope: ScopeContext,
 		query: string,
-		limit: number = 10,
+		limit = 10,
 	): Promise<RetrievalItem[]> {
 		return [];
 	},

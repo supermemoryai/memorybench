@@ -7,14 +7,14 @@
  * (T013, User Story 1)
  */
 
-import { test, expect, describe } from "bun:test";
+import { describe, expect, test } from "bun:test";
+import type { ScopeContext } from "../../types/core";
 import type { BaseProvider } from "../../types/provider";
 import {
 	isBaseProvider,
 	isLegacyTemplate,
 	validateScopeContext,
 } from "../../types/provider";
-import type { ScopeContext } from "../../types/core";
 
 // Dynamic imports for fixtures
 const importValidMinimal = () =>
@@ -162,9 +162,7 @@ describe("Type Guards", () => {
 		// Missing methods
 		expect(isBaseProvider({})).toBe(false);
 		expect(isBaseProvider({ name: "test" })).toBe(false);
-		expect(
-			isBaseProvider({ name: "test", add_memory: () => {} }),
-		).toBe(false);
+		expect(isBaseProvider({ name: "test", add_memory: () => {} })).toBe(false);
 
 		// Wrong types
 		expect(isBaseProvider(null)).toBe(false);
@@ -235,14 +233,10 @@ describe("Type Guards", () => {
 
 	test("validateScopeContext rejects invalid scope", () => {
 		// Missing user_id
-		expect(() =>
-			validateScopeContext({ run_id: "test" }),
-		).toThrow(/user_id/);
+		expect(() => validateScopeContext({ run_id: "test" })).toThrow(/user_id/);
 
 		// Missing run_id
-		expect(() =>
-			validateScopeContext({ user_id: "test" }),
-		).toThrow(/run_id/);
+		expect(() => validateScopeContext({ user_id: "test" })).toThrow(/run_id/);
 
 		// Wrong types
 		expect(() =>

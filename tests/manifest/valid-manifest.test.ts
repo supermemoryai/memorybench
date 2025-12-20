@@ -3,13 +3,13 @@
  * @see specs/004-provider-manifest/spec.md User Story 1
  */
 
-import { describe, test, expect } from "bun:test";
+import { describe, expect, test } from "bun:test";
+import path from "node:path";
 import {
+	loadAllProviders,
 	loadManifest,
 	validateManifest,
-	loadAllProviders,
 } from "../../src/loaders/providers";
-import path from "node:path";
 
 const FIXTURES_DIR = path.join(import.meta.dir, "fixtures");
 
@@ -37,8 +37,11 @@ describe("Valid Manifest Loading", () => {
 		const manifestPath = path.join(FIXTURES_DIR, "valid/manifest.json");
 		const json = await loadManifest(manifestPath);
 
-		// Add an unknown field
-		const jsonWithExtra = { ...json, future_field: "should be preserved" };
+		// Add an unknown field - cast to object to spread
+		const jsonWithExtra = {
+			...(json as Record<string, unknown>),
+			future_field: "should be preserved",
+		};
 		const result = validateManifest(jsonWithExtra, manifestPath);
 
 		expect(result.success).toBe(true);

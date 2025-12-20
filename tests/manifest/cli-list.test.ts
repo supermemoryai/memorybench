@@ -3,10 +3,10 @@
  * @see specs/004-provider-manifest/spec.md User Story 2
  */
 
-import { describe, test, expect } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import {
-	formatProviderTable,
 	formatProviderJson,
+	formatProviderTable,
 } from "../../src/loaders/providers";
 import type { LoadedProvider } from "../../types/manifest";
 

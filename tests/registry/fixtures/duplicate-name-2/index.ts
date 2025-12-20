@@ -5,12 +5,12 @@
  * Should produce "duplicate provider name" error.
  */
 
-import type { BaseProvider } from "../../../../types/provider";
 import type {
-	ScopeContext,
 	MemoryRecord,
 	RetrievalItem,
+	ScopeContext,
 } from "../../../../types/core";
+import type { BaseProvider } from "../../../../types/provider";
 
 const duplicateProvider2: BaseProvider = {
 	name: "duplicate-provider",
@@ -31,7 +31,7 @@ const duplicateProvider2: BaseProvider = {
 	async retrieve_memory(
 		scope: ScopeContext,
 		query: string,
-		limit: number = 10,
+		limit = 10,
 	): Promise<RetrievalItem[]> {
 		return [];
 	},

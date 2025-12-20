@@ -8,7 +8,7 @@
  * 4. delete_memory throws UnsupportedOperationError
  */
 
-import { test, expect, describe } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import type { PreparedData } from "../../providers/_template";
 
 describe("LegacyProviderAdapter (T040)", () => {
@@ -38,7 +38,7 @@ describe("LegacyProviderAdapter (T040)", () => {
 	test("add_memory generates UUID and calls addContext", async () => {
 		const { LegacyProviderAdapter } = await import("../../types/provider");
 
-		let capturedData: PreparedData | null = null;
+		let capturedData: PreparedData | undefined;
 
 		const legacyProvider = {
 			name: "test-legacy",
@@ -52,11 +52,9 @@ describe("LegacyProviderAdapter (T040)", () => {
 		const adapter = new LegacyProviderAdapter(legacyProvider, "test-legacy");
 
 		const scope = { user_id: "user-1", run_id: "run-1" };
-		const result = await adapter.add_memory(
-			scope,
-			"test content",
-			{ key: "value" },
-		);
+		const result = await adapter.add_memory(scope, "test content", {
+			key: "value",
+		});
 
 		// Should return MemoryRecord with UUID
 		expect(result.id).toBeDefined();
@@ -68,15 +66,16 @@ describe("LegacyProviderAdapter (T040)", () => {
 		expect(result.timestamp).toBeGreaterThan(0);
 
 		// Should have called addContext with enhanced metadata
-		expect(capturedData?.context).toBe("test content");
-		expect(capturedData?.metadata.key).toBe("value");
-		expect(capturedData?.metadata._scope).toEqual({
+		expect(capturedData).toBeDefined();
+		expect(capturedData!.context).toBe("test content");
+		expect(capturedData!.metadata.key).toBe("value");
+		expect(capturedData!.metadata._scope).toEqual({
 			user_id: "user-1",
 			run_id: "run-1",
 			session_id: undefined,
 			namespace: undefined,
 		});
-		expect(capturedData?.metadata._generated_id).toBeDefined();
+		expect(capturedData!.metadata._generated_id).toBeDefined();
 	});
 
 	test("retrieve_memory calls searchQuery and wraps results", async () => {
@@ -99,17 +98,18 @@ describe("LegacyProviderAdapter (T040)", () => {
 
 		// Should return RetrievalItem array
 		expect(results).toHaveLength(2);
-		expect(results[0].record.id).toBe("1");
-		expect(results[0].record.context).toBe("Result for test query");
-		expect(results[0].score).toBe(0.9);
-		expect(results[1].record.id).toBe("2");
-		expect(results[1].record.context).toBe("Another result");
-		expect(results[1].score).toBe(0.7);
+		expect(results[0]!.record.id).toBe("1");
+		expect(results[0]!.record.context).toBe("Result for test query");
+		expect(results[0]!.score).toBe(0.9);
+		expect(results[1]!.record.id).toBe("2");
+		expect(results[1]!.record.context).toBe("Another result");
+		expect(results[1]!.score).toBe(0.7);
 	});
 
 	test("delete_memory throws UnsupportedOperationError", async () => {
-		const { LegacyProviderAdapter, UnsupportedOperationError } =
-			await import("../../types/provider");
+		const { LegacyProviderAdapter, UnsupportedOperationError } = await import(
+			"../../types/provider"
+		);
 
 		const legacyProvider = {
 			name: "test-legacy",

@@ -3,17 +3,17 @@
  * @see specs/004-provider-manifest/spec.md User Story 3
  */
 
-import { describe, test, expect } from "bun:test";
+import { describe, expect, test } from "bun:test";
+import path from "node:path";
 import {
-	validateManifest,
-	getUpdateStrategy,
-	getDeleteStrategy,
-	getConvergenceWaitMs,
-	loadManifest,
 	formatValidationError,
+	getConvergenceWaitMs,
+	getDeleteStrategy,
+	getUpdateStrategy,
+	loadManifest,
+	validateManifest,
 } from "../../src/loaders/providers";
 import type { ProviderManifest } from "../../types/manifest";
-import path from "node:path";
 
 const FIXTURES_DIR = path.join(import.meta.dir, "fixtures");
 

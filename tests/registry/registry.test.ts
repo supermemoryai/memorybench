@@ -5,9 +5,9 @@
  * (T021, T022, User Story 2)
  */
 
-import { test, expect, describe, beforeEach } from "bun:test";
-import type { BaseProvider } from "../../types/provider";
+import { beforeEach, describe, expect, test } from "bun:test";
 import type { ScopeContext } from "../../types/core";
+import type { BaseProvider } from "../../types/provider";
 
 // Dynamic import to allow reset between tests
 async function getRegistry() {
@@ -212,11 +212,7 @@ describe("ProviderRegistry - Multi-Provider Loading (T022)", () => {
 
 		// Add a memory first
 		for (const entry of providers) {
-			await entry.adapter.add_memory(
-				scope,
-				"searchable content",
-				{},
-			);
+			await entry.adapter.add_memory(scope, "searchable content", {});
 		}
 
 		// Retrieve from each provider - same interface
@@ -255,11 +251,7 @@ describe("ProviderRegistry - Multi-Provider Loading (T022)", () => {
 			const provider = entry.adapter;
 
 			// Same code works for all providers
-			const memory = await provider.add_memory(
-				scope,
-				"test content",
-				{},
-			);
+			const memory = await provider.add_memory(scope, "test content", {});
 			results.push({ provider: provider.name, memoryId: memory.id });
 		}
 

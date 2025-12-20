@@ -5,12 +5,12 @@
  * Should produce "name mismatch" error.
  */
 
-import type { BaseProvider } from "../../../../types/provider";
 import type {
-	ScopeContext,
 	MemoryRecord,
 	RetrievalItem,
+	ScopeContext,
 } from "../../../../types/core";
+import type { BaseProvider } from "../../../../types/provider";
 
 const nameMismatchProvider: BaseProvider = {
 	name: "actual-name", // Different from manifest "expected-name"
@@ -31,7 +31,7 @@ const nameMismatchProvider: BaseProvider = {
 	async retrieve_memory(
 		scope: ScopeContext,
 		query: string,
-		limit: number = 10,
+		limit = 10,
 	): Promise<RetrievalItem[]> {
 		return [];
 	},

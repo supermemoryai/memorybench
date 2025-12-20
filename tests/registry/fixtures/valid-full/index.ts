@@ -5,13 +5,13 @@
  * Used to test registry loading and optional capability validation.
  */
 
-import type { BaseProvider } from "../../../../types/provider";
 import type {
-	ScopeContext,
 	MemoryRecord,
-	RetrievalItem,
 	ProviderCapabilities,
+	RetrievalItem,
+	ScopeContext,
 } from "../../../../types/core";
+import type { BaseProvider } from "../../../../types/provider";
 
 // Simple in-memory storage for testing
 const memories = new Map<string, MemoryRecord>();
@@ -51,7 +51,7 @@ const validFullProvider: BaseProvider = {
 	async retrieve_memory(
 		scope: ScopeContext,
 		query: string,
-		limit: number = 10,
+		limit = 10,
 	): Promise<RetrievalItem[]> {
 		const results: RetrievalItem[] = [];
 		const prefix = `${scope.user_id}:${scope.run_id}:`;
@@ -109,8 +109,8 @@ const validFullProvider: BaseProvider = {
 
 	async list_memories(
 		scope: ScopeContext,
-		limit: number = 100,
-		offset: number = 0,
+		limit = 100,
+		offset = 0,
 	): Promise<MemoryRecord[]> {
 		const prefix = `${scope.user_id}:${scope.run_id}:`;
 		const results: MemoryRecord[] = [];

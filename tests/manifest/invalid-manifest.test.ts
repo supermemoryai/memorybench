@@ -3,20 +3,23 @@
  * @see specs/004-provider-manifest/spec.md User Story 1
  */
 
-import { describe, test, expect } from "bun:test";
+import { describe, expect, test } from "bun:test";
+import path from "node:path";
 import {
+	formatValidationError,
 	loadManifest,
 	validateManifest,
-	formatValidationError,
 } from "../../src/loaders/providers";
 import { SUPPORTED_MANIFEST_VERSIONS } from "../../types/manifest";
-import path from "node:path";
 
 const FIXTURES_DIR = path.join(import.meta.dir, "fixtures");
 
 describe("Invalid Manifest Handling", () => {
 	test("T021: missing required fields returns specific error", async () => {
-		const manifestPath = path.join(FIXTURES_DIR, "invalid/missing-required.json");
+		const manifestPath = path.join(
+			FIXTURES_DIR,
+			"invalid/missing-required.json",
+		);
 		const json = await loadManifest(manifestPath);
 		const result = validateManifest(json, manifestPath);
 
@@ -40,14 +43,15 @@ describe("Invalid Manifest Handling", () => {
 			const errorMessage = formatValidationError(result.error);
 			// Should mention the field and valid options
 			expect(errorMessage).toContain("provider.type");
-			expect(errorMessage).toMatch(
-				/intelligent_memory|hybrid|framework/,
-			);
+			expect(errorMessage).toMatch(/intelligent_memory|hybrid|framework/);
 		}
 	});
 
 	test("T023: unsupported manifest_version lists supported versions", async () => {
-		const manifestPath = path.join(FIXTURES_DIR, "invalid/invalid-version.json");
+		const manifestPath = path.join(
+			FIXTURES_DIR,
+			"invalid/invalid-version.json",
+		);
 		const json = await loadManifest(manifestPath);
 		const result = validateManifest(json, manifestPath);
 
