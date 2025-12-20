@@ -1,10 +1,10 @@
-import type { BaseProvider } from "../../types/provider";
 import type {
-	ScopeContext,
 	MemoryRecord,
-	RetrievalItem,
 	ProviderCapabilities,
+	RetrievalItem,
+	ScopeContext,
 } from "../../types/core";
+import type { BaseProvider } from "../../types/provider";
 
 // Your in-memory storage (replace with actual implementation)
 const memories = new Map<string, MemoryRecord>();
@@ -37,7 +37,7 @@ const quickstartTest: BaseProvider = {
 	async retrieve_memory(
 		scope: ScopeContext,
 		query: string,
-		limit: number = 10,
+		limit = 10,
 	): Promise<RetrievalItem[]> {
 		const results: RetrievalItem[] = [];
 		const prefix = `${scope.user_id}:${scope.run_id}:`;
@@ -69,8 +69,8 @@ const quickstartTest: BaseProvider = {
 
 	async list_memories(
 		scope: ScopeContext,
-		limit: number = 100,
-		offset: number = 0,
+		limit = 100,
+		offset = 0,
 	): Promise<MemoryRecord[]> {
 		const prefix = `${scope.user_id}:${scope.run_id}:`;
 		const results: MemoryRecord[] = [];

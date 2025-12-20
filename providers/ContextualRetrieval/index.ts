@@ -47,25 +47,8 @@ export default {
 					},
 				}));
 			}
-			case "LoCoMo": {
-				const locomoData = data as BenchmarkRegistry["LoCoMo"][];
-				const preparedData: PreparedData[] = [];
-				for (const item of locomoData) {
-					for (const [sessionDate, sessionData] of Object.entries(
-						item.conversation,
-					)) {
-						const sessionContext = `${sessionDate}: ${JSON.stringify(sessionData)}`;
-						preparedData.push({
-							context: sessionContext,
-							metadata: {
-								benchmarkId: item.sample_id,
-								sessionDate: sessionDate,
-							},
-						});
-					}
-				}
-				return preparedData;
-			}
+			// Future benchmark types can be added here
+			// case "LoCoMo": { ... }
 			default:
 				throw new Error(
 					`RAG provider does not support benchmark type: ${benchmarkType}`,

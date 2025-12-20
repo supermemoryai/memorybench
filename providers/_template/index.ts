@@ -40,7 +40,9 @@ const templateType = {
 		data: BenchmarkRegistry[T][],
 	): PreparedData[] => {
 		const processors: BenchmarkProcessors = {
-			RAG: (ragData: BenchmarkRegistry["RAG"][]) => {
+			"RAG-template-benchmark": (
+				ragData: BenchmarkRegistry["RAG-template-benchmark"][],
+			) => {
 				return ragData.map((item) => ({
 					context: `Question: ${item.question}\n\nDocuments:\n${item.documents.map((d) => `- ${d.title}: ${d.content}`).join("\n")}`,
 					metadata: {
