@@ -1,0 +1,38 @@
+{
+  "manifest_version": "1",
+  "name": "LongMemEval",
+  "version": "1.0.0",
+  "description": "Long-term memory evaluation benchmark testing retrieval across extended conversation histories",
+  "source": "https://arxiv.org/abs/2410.10813",
+  "data_file": "datasets/longmemeval_s_cleaned.json",
+  "ingestion": {
+    "strategy": "session-based",
+    "sessions_field": "haystack_sessions",
+    "session_ids_field": "haystack_session_ids",
+    "dates_field": "haystack_dates",
+    "answer_session_ids_field": "answer_session_ids",
+    "mode": "full",
+    "content_formatter": "conversation"
+  },
+  "query": {
+    "question_field": "question",
+    "expected_answer_field": "answer",
+    "retrieval_limit": 10
+  },
+  "evaluation": {
+    "protocol": "llm-as-judge",
+    "type_field": "question_type",
+    "type_instructions_file": "type_instructions.json"
+  },
+  "metrics": [
+    "correctness",
+    "faithfulness",
+    "retrieval_precision",
+    "retrieval_recall",
+    "retrieval_f1"
+  ],
+  "required_capabilities": [
+    "add_memory",
+    "retrieve_memory"
+  ]
+}

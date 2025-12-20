@@ -1,0 +1,8 @@
+{
+  "temporal-reasoning": "Evaluate temporal reasoning accuracy. The answer should correctly identify dates, times, durations, or temporal relationships. Check if date calculations are accurate and time references are correctly interpreted from the conversation context.",
+  "multi-session": "Evaluate cross-session synthesis. The answer should accurately aggregate or synthesize information from multiple conversation sessions. Check if all relevant sessions were considered and information was correctly combined.",
+  "knowledge-update": "Evaluate knowledge state tracking. The answer should reflect the most current state of facts that may have been updated across conversations. Check if superseded information is correctly ignored in favor of updates.",
+  "single-session-user": "Evaluate user information retrieval. The answer should accurately reflect information explicitly provided by the user in the conversation. Check for verbatim or semantically equivalent recall of user-stated facts.",
+  "single-session-assistant": "Evaluate assistant response consistency. The answer should match what the assistant previously said or recommended. Check if the retrieved information accurately represents the assistant's prior statements.",
+  "single-session-preference": "Evaluate preference inference. The answer should correctly identify user preferences that may be explicitly stated or implied through behavior patterns. Check if the preference interpretation is reasonable given the conversation context."
+}
