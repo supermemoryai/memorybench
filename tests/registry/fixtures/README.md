@@ -6,17 +6,17 @@ This directory contains test fixtures for validating the ProviderRegistry loader
 
 Each fixture represents a provider directory with specific characteristics for testing:
 
-### Valid Fixtures (Phase 3 - User Story 1)
+### Valid Fixtures
 - **valid-minimal/**: Minimal valid provider with core operations only
 - **valid-full/**: Full provider with all optional operations
 
-### Error Fixtures (Phase 5 - User Story 3)
+### Error Fixtures
 - **missing-manifest/**: Provider with index.ts but no manifest.json
 - **missing-adapter/**: Provider with manifest.json but no index.ts
 - **name-mismatch/**: Provider where manifest.provider.name ≠ adapter.name
 - **duplicate-name/**: Two providers with same manifest.provider.name
 
-### Legacy Fixtures (Phase 6 - User Story 4)
+### Legacy Fixtures
 - **legacy-template/**: Provider using old TemplateType interface
 
 ## Usage
@@ -33,4 +33,3 @@ Each fixture directory should contain:
 2. `index.ts` - Provider adapter export (if testing valid path)
 3. Intentional omissions for error testing
 
-Refer to tasks.md Phase 3-6 for specific fixture requirements.
