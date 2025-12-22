@@ -12,8 +12,8 @@ interface RunOptions {
     skipIngest?: boolean;
     skipSearch?: boolean;
     skipEvaluate?: boolean;
-    answeringModel?: string;
-    judgeModel?: string;
+    answeringModel?: string | string[];
+    judgeModel?: string | string[];
     needleSetType?: string;
     limit?: number;
     topK?: number;
@@ -36,9 +36,11 @@ function parseOptions(args: string[]): RunOptions {
         } else if (arg === '--skipEvaluate') {
             options.skipEvaluate = true;
         } else if (arg.startsWith('--answeringModel=')) {
-            options.answeringModel = arg.split('=')[1];
+            const value = arg.split('=')[1]!;
+            options.answeringModel = value.includes(',') ? value.split(',').map(m => m.trim()) : value;
         } else if (arg.startsWith('--judgeModel=')) {
-            options.judgeModel = arg.split('=')[1];
+            const value = arg.split('=')[1]!;
+            options.judgeModel = value.includes(',') ? value.split(',').map(m => m.trim()) : value;
         } else if (arg.startsWith('--needleSetType=')) {
             options.needleSetType = arg.split('=')[1];
         } else if (arg.startsWith('--limit=')) {

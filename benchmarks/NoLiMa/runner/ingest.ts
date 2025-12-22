@@ -6,25 +6,8 @@
 import { existsSync, mkdirSync, writeFileSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { prepareTestCases } from './prepare-tests';
-
-// Dynamic provider imports
-async function getProviderIngest(providerName: string) {
-    if (providerName === 'supermemory') {
-        const { ingestContent } = await import('../../../providers/supermemory/src/ingest');
-        return ingestContent;
-    } else if (providerName === 'mem0') {
-        const { ingestContent } = await import('../../../providers/mem0/src/ingest');
-        return ingestContent;
-    } else if (providerName === 'langchain') {
-        const { ingestContent } = await import('../../../providers/langchain/src/ingest');
-        return ingestContent;
-    } else if (providerName === 'fullcontext') {
-        const { ingestContent } = await import('../../../providers/fullcontext/src/ingest');
-        return ingestContent;
-    } else {
-        throw new Error(`Provider ${providerName} not supported for ingestion`);
-    }
-}
+import { getProviderRegistry } from '../../../core/providers/ProviderRegistry';
+import type { BaseProvider } from '../../../core/providers/BaseProvider';
 
 interface IngestOptions {
     needleSetType?: string;
@@ -94,7 +77,11 @@ export async function ingestNoLiMa(
         };
     }
 
-    const ingestContent = await getProviderIngest(providerName);
+    // Get provider from registry
+    const registry = getProviderRegistry();
+    const provider = await registry.getProvider(providerName);
+    await provider.initialize();
+
     const containerTag = `nolima-${runId}`;
 
     // Ingest test cases
@@ -107,7 +94,7 @@ export async function ingestNoLiMa(
 
         try {
             // Ingest the haystack (with embedded needle)
-            await ingestContent(testCase.haystack, containerTag);
+            await provider.ingest(testCase.haystack, containerTag);
 
             checkpoint.testCasesIngested++;
             checkpoint.lastIngestedIndex = i;

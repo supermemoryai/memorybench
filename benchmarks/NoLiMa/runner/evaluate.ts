@@ -12,21 +12,41 @@ import dedent from 'dedent';
 import type { TestCase, SearchResult, EvaluationResult, NoLiMaReport, PerformanceMetrics } from '../types';
 
 interface EvaluateOptions {
-    judgeModel?: string;
+    judgeModel?: string | string[];
 }
 
 export async function evaluateNoLiMa(
     runId: string,
-    answeringModel: string,
+    answeringModel: string | string[],
     options?: EvaluateOptions
 ) {
-    console.log(`[NoLiMa] Evaluating answers...`);
-    console.log(`Answering Model: ${answeringModel}`);
-    console.log(`Run ID: ${runId}`);
+    const answeringModels = Array.isArray(answeringModel) ? answeringModel : [answeringModel];
+    const judgeModels = options?.judgeModel
+        ? (Array.isArray(options.judgeModel) ? options.judgeModel : [options.judgeModel])
+        : ['gpt-4o'];
 
-    const judgeModel = options?.judgeModel || 'gpt-4o';
-    console.log(`Judge Model: ${judgeModel}`);
+    console.log(`[NoLiMa] Evaluating answers...`);
+    console.log(`Answering Models: ${answeringModels.join(', ')}`);
+    console.log(`Judge Models: ${judgeModels.join(', ')}`);
+    console.log(`Run ID: ${runId}`);
     console.log('');
+
+    // Run evaluation for each combination of answering model and judge model
+    for (const answModel of answeringModels) {
+        for (const judgeModel of judgeModels) {
+            await evaluateWithModels(runId, answModel, judgeModel);
+        }
+    }
+}
+
+async function evaluateWithModels(
+    runId: string,
+    answeringModel: string,
+    judgeModel: string
+) {
+    console.log(`\n${'='.repeat(60)}`);
+    console.log(`Evaluating with Answering: ${answeringModel}, Judge: ${judgeModel}`);
+    console.log('='.repeat(60));
 
     // Initialize Vertex only for Gemini models
     let vertex: any = null;
@@ -132,11 +152,15 @@ export async function evaluateNoLiMa(
         mkdirSync(evaluationsDir, { recursive: true });
     }
 
-    const reportPath = join(evaluationsDir, `eval-${answeringModel.replace(/[/:]/g, '-')}.json`);
+    const answeringSafe = answeringModel.replace(/[/:]/g, '-');
+    const judgeSafe = judgeModel.replace(/[/:]/g, '-');
+    const reportPath = join(evaluationsDir, `eval-answer_${answeringSafe}-judge_${judgeSafe}.json`);
     writeFileSync(reportPath, JSON.stringify(finalReport, null, 2));
 
     console.log('');
-    console.log('=== NoLiMa Evaluation Complete ===');
+    console.log('=== Evaluation Complete ===');
+    console.log(`Answering Model: ${answeringModel}`);
+    console.log(`Judge Model: ${judgeModel}`);
     console.log(`Overall Accuracy: ${finalReport.summary.overallAccuracy.toFixed(2)}%`);
     console.log(`Base Score (1K context): ${finalReport.summary.baseScore.toFixed(2)}%`);
     console.log(`Effective Length: ${finalReport.summary.effectiveLength ? `${finalReport.summary.effectiveLength} tokens` : 'N/A'}`);

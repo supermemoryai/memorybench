@@ -6,25 +6,8 @@
 import { existsSync, mkdirSync, writeFileSync, readFileSync } from 'fs';
 import { join } from 'path';
 import type { TestCase, SearchResult } from '../types';
-
-// Dynamic provider imports
-async function getProviderSearch(providerName: string) {
-    if (providerName === 'supermemory') {
-        const { searchDocuments } = await import('../../../providers/supermemory/src/search');
-        return searchDocuments;
-    } else if (providerName === 'mem0') {
-        const { searchMemories } = await import('../../../providers/mem0/src/search');
-        return searchMemories;
-    } else if (providerName === 'langchain') {
-        const { searchDocuments } = await import('../../../providers/langchain/src/search');
-        return searchDocuments;
-    } else if (providerName === 'fullcontext') {
-        const { searchDocuments } = await import('../../../providers/fullcontext/src/search');
-        return searchDocuments;
-    } else {
-        throw new Error(`Provider ${providerName} not supported for search`);
-    }
-}
+import { getProviderRegistry } from '../../../core/providers/ProviderRegistry';
+import type { BaseProvider } from '../../../core/providers/BaseProvider';
 
 interface SearchOptions {
     topK?: number;
@@ -80,7 +63,11 @@ export async function searchNoLiMa(
         };
     }
 
-    const searchFunction = await getProviderSearch(providerName);
+    // Get provider from registry
+    const registry = getProviderRegistry();
+    const provider = await registry.getProvider(providerName);
+    await provider.initialize();
+
     const containerTag = `nolima-${runId}`;
     const topK = options?.topK || 5;
 
@@ -93,22 +80,10 @@ export async function searchNoLiMa(
         }
 
         try {
-            let retrievedContext = '';
-            let retrievedNeedle = false;
-
-            if (providerName === 'supermemory') {
-                const results = await searchFunction(testCase.question, containerTag, { limit: topK });
-                retrievedContext = results.map((r: any) => r.content).join('\n\n---\n\n');
-                retrievedNeedle = retrievedContext.toLowerCase().includes(testCase.needle.toLowerCase());
-            } else if (providerName === 'mem0') {
-                const results = await searchFunction(testCase.question, containerTag, { limit: topK });
-                retrievedContext = results.map((r: any) => r.content || r.memory).join('\n\n---\n\n');
-                retrievedNeedle = retrievedContext.toLowerCase().includes(testCase.needle.toLowerCase());
-            } else if (providerName === 'zep') {
-                const results = await searchFunction(testCase.question, containerTag, { limit: topK, searchScope: 'messages' });
-                retrievedContext = results.map((r: any) => r.content || r.message?.content).join('\n\n---\n\n');
-                retrievedNeedle = retrievedContext.toLowerCase().includes(testCase.needle.toLowerCase());
-            }
+            // Use unified provider interface
+            const results = await provider.search(testCase.question, containerTag, { limit: topK });
+            const retrievedContext = results.map((r: any) => r.content).join('\n\n---\n\n');
+            const retrievedNeedle = retrievedContext.toLowerCase().includes(testCase.needle.toLowerCase());
 
             const searchResult: SearchResult = {
                 testCaseId: testCase.testId,

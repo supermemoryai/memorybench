@@ -6,9 +6,15 @@
  */
 
 import { parseArgs } from "util";
+import { ProviderLoader } from '../core/providers/ProviderLoader';
+import { getProviderRegistry } from '../core/providers/ProviderRegistry';
 
 const AVAILABLE_BENCHMARKS = ['LongMemEval', 'LoCoMo', 'NoLiMa'];
-const AVAILABLE_PROVIDERS = ['supermemory', 'mem0', 'langchain', 'fullcontext', 'AQRAG', 'ContextualRetrieval'];
+
+// Load all providers from the providers directory
+await ProviderLoader.loadAll();
+const registry = getProviderRegistry();
+const AVAILABLE_PROVIDERS = registry.getAvailableProviders();
 
 // Helper function to generate runID in format: benchmark_provider_datetime
 function generateRunId(benchmarkName: string, providerName: string): string {
@@ -38,12 +44,19 @@ if (args.length < 2) {
     console.error('  bun run benchmark LongMemEval supermemory --limit=5');
     console.error('  bun run benchmark LoCoMo supermemory --limit=2');
     console.error('  bun run benchmark NoLiMa supermemory --limit=10');
-    console.error('  bun run benchmark LongMemEval supermemory --answeringModel=gpt-4o --judgeModel=gpt-4o');
+    console.error('');
+    console.error('Multiple models (comma-separated):');
+    console.error('  bun run benchmark NoLiMa supermemory --answeringModel=gpt-4o,gpt-4o-mini --judgeModel=gpt-4o');
+    console.error('  bun run benchmark NoLiMa fullcontext --answeringModel=gpt-4o,claude-3-5-sonnet-20241022');
+    console.error('  bun run benchmark NoLiMa supermemory --judgeModel=gpt-4o,claude-3-5-sonnet-20241022');
+    console.error('');
+    console.error('Skip phases:');
     console.error('  bun run benchmark LongMemEval supermemory --skipIngest');
     console.error('  bun run benchmark LongMemEval supermemory --skipSearch');
     console.error('');
     console.error('Note: runId is auto-generated as benchmark_provider_datetime');
     console.error('      All results are stored in results/ directory');
+    console.error('      Multiple models will create separate evaluation reports for each combination');
     process.exit(1);
 }
 

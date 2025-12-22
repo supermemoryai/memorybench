@@ -5,25 +5,8 @@
 
 import { readFileSync, readdirSync, existsSync, mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
-
-// Dynamic provider imports
-async function getProviderSearch(providerName: string) {
-    if (providerName === 'supermemory') {
-        const { searchDocuments } = await import('../../../providers/supermemory/src/search');
-        return searchDocuments;
-    } else if (providerName === 'mem0') {
-        const { searchMemories } = await import('../../../providers/mem0/src/search');
-        return searchMemories;
-    } else if (providerName === 'langchain') {
-        const { searchDocuments } = await import('../../../providers/langchain/src/search');
-        return searchDocuments;
-    } else if (providerName === 'fullcontext') {
-        const { searchDocuments } = await import('../../../providers/fullcontext/src/search');
-        return searchDocuments;
-    } else {
-        throw new Error(`Provider ${providerName} not supported for search`);
-    }
-}
+import { getProviderRegistry } from '../../../core/providers/ProviderRegistry';
+import type { BaseProvider } from '../../../core/providers/BaseProvider';
 
 interface SearchOptions {
     startPosition?: number;
@@ -75,8 +58,10 @@ export async function searchAllQuestions(
         mkdirSync(resultsDir, { recursive: true });
     }
 
-    // Get provider-specific search function
-    const searchFunction = await getProviderSearch(providerName);
+    // Get provider from registry
+    const registry = getProviderRegistry();
+    const provider = await registry.getProvider(providerName);
+    await provider.initialize();
 
     let successCount = 0;
     let failedCount = 0;
@@ -96,11 +81,10 @@ export async function searchAllQuestions(
             const questionDate = data.question_date;
             const answer = data.answer;
 
-            // Perform search using provider-specific function
-            const searchResults = await searchFunction(question, containerTag, {
+            // Perform search using unified provider interface
+            const searchResults = await provider.search(question, containerTag, {
                 limit: 10,
                 threshold: 0.3,
-                includeChunks: true,
             });
 
             // Transform results to match expected format

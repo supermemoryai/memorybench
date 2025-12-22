@@ -5,25 +5,8 @@
 
 import { readFileSync, readdirSync, existsSync, mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
-
-// Dynamic provider imports
-async function getProviderIngest(providerName: string) {
-    if (providerName === 'supermemory') {
-        const { ingestContent } = await import('../../../providers/supermemory/src/ingest');
-        return ingestContent;
-    } else if (providerName === 'mem0') {
-        const { ingestContent } = await import('../../../providers/mem0/src/ingest');
-        return ingestContent;
-    } else if (providerName === 'langchain') {
-        const { ingestContent } = await import('../../../providers/langchain/src/ingest');
-        return ingestContent;
-    } else if (providerName === 'fullcontext') {
-        const { ingestContent } = await import('../../../providers/fullcontext/src/ingest');
-        return ingestContent;
-    } else {
-        throw new Error(`Provider ${providerName} not supported for ingestion`);
-    }
-}
+import { getProviderRegistry } from '../../../core/providers/ProviderRegistry';
+import type { BaseProvider } from '../../../core/providers/BaseProvider';
 
 interface IngestOptions {
     startPosition?: number;
@@ -161,8 +144,10 @@ async function ingestSingleQuestion(
         }
     }
 
-    // Get provider-specific ingest function
-    const ingestContent = await getProviderIngest(providerName);
+    // Get provider from registry
+    const registry = getProviderRegistry();
+    const provider = await registry.getProvider(providerName);
+    await provider.initialize();
 
     // Ingest each session
     const numberOfSessions = checkpoint.sessions.length;
@@ -189,8 +174,7 @@ Here is the session as a stringified JSON:
 ${sessionStr}`;
 
             // Ingest using provider
-            // Both mem0 and supermemory use the same signature (content, containerTag/userId)
-            await ingestContent(content, containerTag);
+            await provider.ingest(content, containerTag);
 
             // Mark as successfully ingested
             session.ingested = true;

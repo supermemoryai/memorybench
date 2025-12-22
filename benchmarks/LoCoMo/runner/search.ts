@@ -6,25 +6,8 @@
 import { readFileSync, existsSync, mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import type { LoCoMoBenchmarkItem, qaItem } from '../types';
-
-// Dynamic provider imports
-async function getProviderSearch(providerName: string) {
-    if (providerName === 'supermemory') {
-        const { searchDocuments } = await import('../../../providers/supermemory/src/search');
-        return searchDocuments;
-    } else if (providerName === 'mem0') {
-        const { searchMemories } = await import('../../../providers/mem0/src/search');
-        return searchMemories;
-    } else if (providerName === 'langchain') {
-        const { searchDocuments } = await import('../../../providers/langchain/src/search');
-        return searchDocuments;
-    } else if (providerName === 'fullcontext') {
-        const { searchDocuments } = await import('../../../providers/fullcontext/src/search');
-        return searchDocuments;
-    } else {
-        throw new Error(`Provider ${providerName} not supported for search`);
-    }
-}
+import { getProviderRegistry } from '../../../core/providers/ProviderRegistry';
+import type { BaseProvider } from '../../../core/providers/BaseProvider';
 
 interface SearchOptions {
     startPosition?: number;
@@ -75,7 +58,11 @@ export async function searchAllSamples(
 
     console.log('');
 
-    const searchFunction = await getProviderSearch(providerName);
+    // Get provider from registry
+    const registry = getProviderRegistry();
+    const provider = await registry.getProvider(providerName);
+    await provider.initialize();
+
     let successCount = 0;
     let failedCount = 0;
 
@@ -86,7 +73,7 @@ export async function searchAllSamples(
         console.log(`[${i + 1}/${samplesToProcess.length}] Searching ${sampleId} (${sample.qa.length} questions)...`);
 
         try {
-            await searchSingleSample(sample, runId, providerName, searchFunction, options);
+            await searchSingleSample(sample, runId, provider, options);
             successCount++;
             console.log(`  ✓ Success`);
         } catch (error) {
@@ -107,8 +94,7 @@ export async function searchAllSamples(
 async function searchSingleSample(
     sample: LoCoMoBenchmarkItem,
     runId: string,
-    providerName: string,
-    searchFunction: any,
+    provider: BaseProvider,
     options?: SearchOptions
 ) {
     const sampleId = sample.sample_id;
@@ -143,22 +129,9 @@ async function searchSingleSample(
         const questionId = `${sampleId}-q${i + 1}`;
 
         try {
-            // Search for relevant context
-            let retrievedContext = '';
-
-            if (providerName === 'supermemory') {
-                const results = await searchFunction(qa.question, containerTag, { limit: topK });
-                retrievedContext = results.map((r: any) => r.content).join('\n\n---\n\n');
-            } else if (providerName === 'mem0') {
-                const results = await searchFunction(qa.question, containerTag, { limit: topK });
-                retrievedContext = results.map((r: any) => r.content || r.memory).join('\n\n---\n\n');
-            } else if (providerName === 'langchain') {
-                const results = await searchFunction(qa.question, containerTag, { limit: topK });
-                retrievedContext = results.map((r: any) => r.content).join('\n\n---\n\n');
-            } else if (providerName === 'fullcontext') {
-                const results = await searchFunction(qa.question, containerTag, { limit: 999999 });
-                retrievedContext = results.map((r: any) => r.content).join('\n\n---\n\n');
-            }
+            // Search for relevant context using unified interface
+            const results = await provider.search(qa.question, containerTag, { limit: topK });
+            const retrievedContext = results.map((r: any) => r.content).join('\n\n---\n\n');
 
             const searchResult: QuestionSearchResult = {
                 questionId,

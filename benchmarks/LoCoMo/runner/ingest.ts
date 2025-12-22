@@ -6,25 +6,8 @@
 import { readFileSync, existsSync, mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import type { LoCoMoBenchmarkItem, sessionItem } from '../types';
-
-// Dynamic provider imports
-async function getProviderIngest(providerName: string) {
-    if (providerName === 'supermemory') {
-        const { ingestContent } = await import('../../../providers/supermemory/src/ingest');
-        return ingestContent;
-    } else if (providerName === 'mem0') {
-        const { ingestContent } = await import('../../../providers/mem0/src/ingest');
-        return ingestContent;
-    } else if (providerName === 'langchain') {
-        const { ingestContent } = await import('../../../providers/langchain/src/ingest');
-        return ingestContent;
-    } else if (providerName === 'fullcontext') {
-        const { ingestContent } = await import('../../../providers/fullcontext/src/ingest');
-        return ingestContent;
-    } else {
-        throw new Error(`Provider ${providerName} not supported for ingestion`);
-    }
-}
+import { getProviderRegistry } from '../../../core/providers/ProviderRegistry';
+import type { BaseProvider } from '../../../core/providers/BaseProvider';
 
 interface IngestOptions {
     startPosition?: number;
@@ -73,7 +56,10 @@ export async function ingestAllSamples(
 
     console.log('');
 
-    const ingestContent = await getProviderIngest(providerName);
+    // Get provider from registry
+    const registry = getProviderRegistry();
+    const provider = await registry.getProvider(providerName);
+    await provider.initialize();
     let successCount = 0;
     let failedCount = 0;
 
@@ -197,7 +183,7 @@ async function ingestSingleSample(
 
             const content = `Here is a conversation session that took place on ${dateTime}:\n\n${conversationText}`;
 
-            await ingestContent(content, containerTag);
+            await provider.ingest(content, containerTag);
 
             session.ingested = true;
             session.timestamp = new Date().toISOString();
