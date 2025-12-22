@@ -7,7 +7,7 @@
 
 import { parseArgs } from "util";
 
-const AVAILABLE_BENCHMARKS = ['LongMemEval', 'LoCoMo'];
+const AVAILABLE_BENCHMARKS = ['LongMemEval', 'LoCoMo', 'NoLiMa'];
 const AVAILABLE_PROVIDERS = ['supermemory', 'mem0', 'zep', 'AQRAG', 'ContextualRetrieval'];
 
 // Parse command line arguments
@@ -23,6 +23,7 @@ if (args.length < 2) {
     console.error('  bun run benchmark LongMemEval supermemory --runId=run1');
     console.error('  bun run benchmark LongMemEval supermemory --runId=run1 --limit=5');
     console.error('  bun run benchmark LoCoMo supermemory --runId=run1 --limit=2');
+    console.error('  bun run benchmark NoLiMa supermemory --runId=run1 --limit=10');
     console.error('  bun run benchmark LongMemEval supermemory --runId=run1 --answeringModel=gpt-4o --judgeModel=gpt-4o');
     console.error('  bun run benchmark LongMemEval supermemory --runId=run1 --skipIngest');
     console.error('  bun run benchmark LongMemEval supermemory --runId=run1 --skipSearch');
@@ -62,6 +63,11 @@ switch (benchmarkName) {
     case 'LoCoMo':
         const { runLoCoMo } = await import('../benchmarks/LoCoMo/runner/index.ts');
         await runLoCoMo(providerName, options);
+        break;
+
+    case 'NoLiMa':
+        const { runNoLiMa } = await import('../benchmarks/NoLiMa/runner/index.ts');
+        await runNoLiMa(providerName, options);
         break;
 
     default:
