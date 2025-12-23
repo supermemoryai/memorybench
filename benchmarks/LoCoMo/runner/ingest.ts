@@ -70,7 +70,7 @@ export async function ingestAllSamples(
         console.log(`[${i + 1}/${samplesToProcess.length}] Processing ${sampleId}...`);
 
         try {
-            await ingestSingleSample(sample, runId, providerName, ingestContent, options);
+            await ingestSingleSample(sample, runId, provider, options);
             successCount++;
             console.log(`  ✓ Success`);
 
@@ -95,8 +95,7 @@ export async function ingestAllSamples(
 async function ingestSingleSample(
     sample: LoCoMoBenchmarkItem,
     runId: string,
-    providerName: string,
-    ingestContent: any,
+    provider: BaseProvider,
     options?: IngestOptions
 ) {
     const sampleId = sample.sample_id;
@@ -183,6 +182,7 @@ async function ingestSingleSample(
 
             const content = `Here is a conversation session that took place on ${dateTime}:\n\n${conversationText}`;
 
+            console.log(`  Ingesting session ${i + 1}/${numberOfSessions}: ${session.sessionId} (${content.length} bytes)...`);
             await provider.ingest(content, containerTag);
 
             session.ingested = true;
@@ -197,6 +197,17 @@ async function ingestSingleSample(
         } catch (error) {
             session.error = error instanceof Error ? error.message : String(error);
             writeFileSync(checkpointPath, JSON.stringify(checkpoint, null, 2));
+            console.error(`  ✗ Failed: ${session.error}`);
+            
+            // For fullcontext provider, this is often a 500 error due to content issues
+            // Log but continue with next session instead of failing entire run
+            if (error instanceof Error && error.message.includes('500')) {
+                console.warn(`  ⚠ Server error - skipping session ${i + 1}/${numberOfSessions}, continuing with next session`);
+                // Don't increment success count, but don't throw either
+                continue;
+            }
+            
+            // For other errors, throw to stop
             throw new Error(`Failed at session ${i + 1}/${numberOfSessions}: ${session.error}`);
         }
     }

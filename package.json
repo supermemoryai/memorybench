@@ -3,8 +3,14 @@
   "module": "index.ts",
   "type": "module",
   "private": true,
+  "bin": {
+    "memorybench": "./bin/memorybench.ts"
+  },
   "scripts": {
-    "benchmark": "bun cli/run-benchmark.ts"
+    "benchmark": "bun cli/run-benchmark.ts",
+    "run": "bun run.ts",
+    "memorybench": "bun bin/memorybench.ts",
+    "viz": "bun viz/server.ts"
   },
   "devDependencies": {
     "@types/bun": "latest"

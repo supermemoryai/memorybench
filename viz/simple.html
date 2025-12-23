@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MemoryBench - Results Viewer</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: #0a0a0a;
+            color: #e0e0e0;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            text-align: center;
+            margin-bottom: 30px;
+            color: #ffffff;
+            font-size: 2em;
+        }
+
+        .controls {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 30px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+
+        .control-group {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        label {
+            font-weight: 500;
+            color: #ccc;
+        }
+
+        select, input {
+            padding: 8px 12px;
+            background: #1a1a1a;
+            border: 1px solid #333;
+            color: #e0e0e0;
+            border-radius: 4px;
+            font-family: monospace;
+            cursor: pointer;
+        }
+
+        select:hover, input:hover {
+            border-color: #555;
+        }
+
+        select:focus, input:focus {
+            outline: none;
+            border-color: #2563eb;
+            box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.1);
+        }
+
+        .results {
+            display: grid;
+            gap: 20px;
+        }
+
+        .result-card {
+            background: #1a1a1a;
+            border: 1px solid #333;
+            border-radius: 8px;
+            padding: 20px;
+            transition: all 0.2s;
+        }
+
+        .result-card:hover {
+            border-color: #555;
+            background: #222;
+        }
+
+        .result-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: start;
+            margin-bottom: 15px;
+            gap: 20px;
+            flex-wrap: wrap;
+        }
+
+        .result-title {
+            font-size: 1.2em;
+            font-weight: 600;
+            color: #fff;
+        }
+
+        .copy-btn {
+            padding: 6px 12px;
+            background: #2563eb;
+            border: none;
+            color: white;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.85em;
+            transition: background 0.2s;
+        }
+
+        .copy-btn:hover {
+            background: #1d4ed8;
+        }
+
+        .copy-btn.copied {
+            background: #059669;
+        }
+
+        .result-meta {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 15px;
+            margin-bottom: 15px;
+            font-size: 0.9em;
+        }
+
+        .meta-item {
+            background: #0a0a0a;
+            padding: 10px;
+            border-radius: 4px;
+            border-left: 3px solid #2563eb;
+        }
+
+        .meta-label {
+            color: #888;
+            font-size: 0.8em;
+            text-transform: uppercase;
+        }
+
+        .meta-value {
+            color: #2563eb;
+            font-weight: 600;
+            font-family: monospace;
+            margin-top: 4px;
+        }
+
+        .result-json {
+            background: #0a0a0a;
+            border: 1px solid #333;
+            border-radius: 4px;
+            padding: 15px;
+            overflow-x: auto;
+            max-height: 600px;
+            overflow-y: auto;
+        }
+
+        .result-json pre {
+            font-family: 'Courier New', monospace;
+            font-size: 0.85em;
+            line-height: 1.4;
+            margin: 0;
+        }
+
+        .no-results {
+            text-align: center;
+            color: #666;
+            padding: 40px 20px;
+        }
+
+        .loading {
+            text-align: center;
+            color: #666;
+            padding: 20px;
+        }
+
+        #error {
+            background: #7f1d1d;
+            border: 1px solid #991b1b;
+            color: #fecaca;
+            padding: 15px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📊 MemoryBench Results</h1>
+
+        <div id="error"></div>
+
+        <div class="controls">
+            <div class="control-group">
+                <label for="benchmark-filter">Benchmark:</label>
+                <select id="benchmark-filter">
+                    <option value="">All</option>
+                    <option value="LoCoMo">LoCoMo</option>
+                    <option value="NoLiMa">NoLiMa</option>
+                    <option value="LongMemEval">LongMemEval</option>
+                </select>
+            </div>
+            <div class="control-group">
+                <label for="provider-filter">Provider:</label>
+                <select id="provider-filter">
+                    <option value="">All</option>
+                </select>
+            </div>
+            <div class="control-group">
+                <label for="search">Search:</label>
+                <input type="text" id="search" placeholder="Filter by run ID...">
+            </div>
+        </div>
+
+        <div id="loading" class="loading">Loading results...</div>
+        <div id="results" class="results"></div>
+        <div id="no-results" class="no-results" style="display: none;">No results found</div>
+    </div>
+
+    <script>
+        let allResults = [];
+
+        async function loadData() {
+            try {
+                const response = await fetch('/api/results');
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                
+                allResults = await response.json();
+                populateFilters();
+                renderResults();
+                document.getElementById('loading').style.display = 'none';
+            } catch (err) {
+                console.error('Error loading data:', err);
+                const errorEl = document.getElementById('error');
+                errorEl.textContent = `Error: ${err.message}`;
+                errorEl.style.display = 'block';
+                document.getElementById('loading').style.display = 'none';
+            }
+        }
+
+        function populateFilters() {
+            const providers = new Set();
+            allResults.forEach(r => providers.add(r.metadata.provider));
+            
+            const providerSelect = document.getElementById('provider-filter');
+            const currentValue = providerSelect.value;
+            
+            Array.from(providers).sort().forEach(provider => {
+                const option = document.createElement('option');
+                option.value = provider;
+                option.textContent = provider;
+                providerSelect.appendChild(option);
+            });
+            
+            providerSelect.value = currentValue;
+        }
+
+        function getFilteredResults() {
+            const benchmark = document.getElementById('benchmark-filter').value;
+            const provider = document.getElementById('provider-filter').value;
+            const search = document.getElementById('search').value.toLowerCase();
+
+            return allResults.filter(r => {
+                const matchBenchmark = !benchmark || r.benchmark === benchmark;
+                const matchProvider = !provider || r.metadata.provider === provider;
+                const matchSearch = !search || r.metadata.runId.toLowerCase().includes(search);
+                return matchBenchmark && matchProvider && matchSearch;
+            });
+        }
+
+        function renderResults() {
+            const filtered = getFilteredResults();
+            const resultsDiv = document.getElementById('results');
+            const noResults = document.getElementById('no-results');
+
+            if (filtered.length === 0) {
+                resultsDiv.innerHTML = '';
+                noResults.style.display = 'block';
+                return;
+            }
+
+            noResults.style.display = 'none';
+            resultsDiv.innerHTML = filtered.map(result => `
+                <div class="result-card">
+                    <div class="result-header">
+                        <div class="result-title">${result.metadata.runId}</div>
+                        <button class="copy-btn" onclick="copyToClipboard(this, '${escapeHtml(JSON.stringify(result, null, 2))}')">
+                            Copy JSON
+                        </button>
+                    </div>
+                    <div class="result-meta">
+                        <div class="meta-item">
+                            <div class="meta-label">Benchmark</div>
+                            <div class="meta-value">${result.benchmark}</div>
+                        </div>
+                        <div class="meta-item">
+                            <div class="meta-label">Provider</div>
+                            <div class="meta-value">${result.metadata.provider}</div>
+                        </div>
+                        <div class="meta-item">
+                            <div class="meta-label">Model</div>
+                            <div class="meta-value">${result.metadata.answeringModel}</div>
+                        </div>
+                        <div class="meta-item">
+                            <div class="meta-label">Accuracy</div>
+                            <div class="meta-value">${result.metadata.accuracy}</div>
+                        </div>
+                    </div>
+                    <div class="result-json">
+                        <pre>${escapeHtml(JSON.stringify(result, null, 2))}</pre>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function copyToClipboard(btn, text) {
+            navigator.clipboard.writeText(text.replace(/\\n/g, '\n')).then(() => {
+                const original = btn.textContent;
+                btn.textContent = 'Copied!';
+                btn.classList.add('copied');
+                setTimeout(() => {
+                    btn.textContent = original;
+                    btn.classList.remove('copied');
+                }, 2000);
+            }).catch(err => console.error('Copy failed:', err));
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // Event listeners
+        document.getElementById('benchmark-filter').addEventListener('change', renderResults);
+        document.getElementById('provider-filter').addEventListener('change', renderResults);
+        document.getElementById('search').addEventListener('input', renderResults);
+
+        // Load on startup
+        loadData();
+    </script>
+</body>
+</html>

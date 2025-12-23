@@ -14,6 +14,7 @@ interface EvaluateOptions {
     startPosition?: number;
     endPosition?: number;
     judgeModel?: string;
+    providerName?: string;
 }
 
 interface QuestionEvaluation {
@@ -106,7 +107,7 @@ export async function evaluateAllSamples(
         console.log(`[${i + 1}/${samplesToProcess.length}] Evaluating ${sampleId} (${sample.qa.length} questions)...`);
 
         // Load search results
-        const searchCheckpointPath = join(process.cwd(), 'benchmarks/LoCoMo/checkpoints/search', `search-${sampleId}-${runId}.json`);
+        const searchCheckpointPath = join(process.cwd(), 'results', runId, 'checkpoints', 'search', `search-${sampleId}-${runId}.json`);
 
         if (!existsSync(searchCheckpointPath)) {
             console.log(`  ⚠ Skipping - no search results found`);
@@ -169,8 +170,8 @@ export async function evaluateAllSamples(
     // Generate final report
     const finalReport = createReport(runId, answeringModel, evaluations);
 
-    // Save to evaluations directory
-    const evaluationsDir = join(process.cwd(), 'benchmarks/LoCoMo/evaluations');
+    // Save to evaluations directory in results
+    const evaluationsDir = join(process.cwd(), 'results', runId, 'evaluation');
     if (!existsSync(evaluationsDir)) {
         mkdirSync(evaluationsDir, { recursive: true });
     }
@@ -190,6 +191,31 @@ export async function evaluateAllSamples(
     }
     console.log('');
     console.log(`Report saved to: ${reportPath}`);
+
+    // Save cumulative summary for visualization at run root
+    const summaryPath = join(process.cwd(), 'results', runId, 'evaluation-summary.json');
+    const summaryDir = join(process.cwd(), 'results', runId);
+    if (!existsSync(summaryDir)) {
+        mkdirSync(summaryDir, { recursive: true });
+    }
+
+    const visualizationSummary = {
+        benchmark: 'LoCoMo',
+        metadata: {
+            runId,
+            provider: options?.providerName || 'unknown',
+            answeringModel,
+            judgeModel,
+            evaluatedAt: finalReport.metadata.evaluatedAt,
+            totalQuestions: finalReport.metadata.totalQuestions,
+            correctAnswers: finalReport.metadata.correctAnswers,
+            accuracy: finalReport.metadata.accuracy
+        },
+        byCategory: finalReport.byCategory,
+        evaluations: finalReport.evaluations
+    };
+    writeFileSync(summaryPath, JSON.stringify(visualizationSummary, null, 2));
+    console.log(`Visualization summary saved to: ${summaryPath}`);
 }
 
 async function generateAnswer(

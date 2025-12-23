@@ -6,6 +6,8 @@
 import { ingestAllSamples } from './ingest';
 import { searchAllSamples } from './search';
 import { evaluateAllSamples } from './evaluate';
+import { existsSync, readFileSync } from 'fs';
+import { join } from 'path';
 
 interface RunOptions {
     runId?: string;
@@ -123,7 +125,8 @@ export async function runLoCoMo(
             await evaluateAllSamples(runId, answeringModel, {
                 startPosition: options.startPosition,
                 endPosition: options.endPosition,
-                judgeModel: options.judgeModel
+                judgeModel: options.judgeModel,
+                providerName
             });
         } else {
             console.log('Phase 3: Skipped (--skipEvaluate)');
@@ -133,8 +136,47 @@ export async function runLoCoMo(
         console.log('=================================');
         console.log('   LoCoMo Benchmark Complete!');
         console.log('=================================');
+        console.log('');
+
+        // Display evaluation summary if available
+        displayEvaluationSummary(runId);
     } catch (error) {
         console.error('Error running LoCoMo benchmark:', error);
         throw error;
+    }
+}
+
+function displayEvaluationSummary(runId: string): void {
+    const summaryPath = join(process.cwd(), 'results', runId, 'evaluation-summary.json');
+    
+    if (existsSync(summaryPath)) {
+        try {
+            const summary = JSON.parse(readFileSync(summaryPath, 'utf8'));
+            
+            console.log('📊 EVALUATION RESULTS');
+            console.log('='.repeat(60));
+            console.log(`Benchmark: ${summary.benchmark}`);
+            console.log(`Provider:  ${summary.metadata.provider}`);
+            console.log(`Answering Model: ${summary.metadata.answeringModel}`);
+            console.log(`Judge Model: ${summary.metadata.judgeModel}`);
+            console.log('');
+            console.log('Performance Metrics:');
+            console.log(`  Overall Accuracy: ${summary.metadata.accuracy}`);
+            console.log(`  Total Questions: ${summary.metadata.totalQuestions}`);
+            console.log(`  Correct Answers: ${summary.metadata.correctAnswers}`);
+            console.log('');
+            if (summary.byCategory && summary.byCategory.length > 0) {
+                console.log('By Category:');
+                for (const cat of summary.byCategory) {
+                    console.log(`  ${cat.categoryName}: ${cat.accuracy} (${cat.correct}/${cat.total})`);
+                }
+                console.log('');
+            }
+            console.log('='.repeat(60));
+            console.log(`✓ Results saved to: results/${runId}/`);
+            console.log('');
+        } catch (error) {
+            // Summary file might not be ready yet if evaluation was skipped
+        }
     }
 }

@@ -157,6 +157,36 @@ async function evaluateWithModels(
     const reportPath = join(evaluationsDir, `eval-answer_${answeringSafe}-judge_${judgeSafe}.json`);
     writeFileSync(reportPath, JSON.stringify(finalReport, null, 2));
 
+    // Save cumulative summary for visualization at run root
+    const summaryPath = join(process.cwd(), 'results', runId, 'evaluation-summary.json');
+    const visualizationSummary = {
+        benchmark: 'NoLiMa',
+        metadata: {
+            runId,
+            provider: searchCheckpoint.providerName,
+            answeringModel,
+            judgeModel,
+            evaluatedAt: new Date().toISOString(),
+            totalTests: finalReport.summary.totalTests,
+            correctAnswers: finalReport.summary.correctAnswers,
+            accuracy: `${finalReport.summary.overallAccuracy.toFixed(2)}%`
+        },
+        metrics: {
+            overallAccuracy: finalReport.summary.overallAccuracy,
+            baseScore: finalReport.summary.baseScore,
+            effectiveLength: finalReport.summary.effectiveLength,
+            retrievalRate: evaluations.filter(e => e.retrievedNeedle).length / evaluations.length * 100
+        },
+        byContextLength: finalReport.byContextLength.map(m => ({
+            contextLength: `${m.contextLength / 1000}K`,
+            correct: m.correctAnswers,
+            total: m.totalTests,
+            accuracy: `${m.accuracy.toFixed(2)}%`,
+            retrievalRate: `${m.retrievalRate.toFixed(2)}%`
+        }))
+    };
+    writeFileSync(summaryPath, JSON.stringify(visualizationSummary, null, 2));
+
     console.log('');
     console.log('=== Evaluation Complete ===');
     console.log(`Answering Model: ${answeringModel}`);
@@ -171,6 +201,7 @@ async function evaluateWithModels(
     }
     console.log('');
     console.log(`Report saved to: ${reportPath}`);
+    console.log(`Visualization summary saved to: ${summaryPath}`);
 }
 
 async function generateAnswer(

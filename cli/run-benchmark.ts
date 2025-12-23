@@ -16,8 +16,8 @@ await ProviderLoader.loadAll();
 const registry = getProviderRegistry();
 const AVAILABLE_PROVIDERS = registry.getAvailableProviders();
 
-// Helper function to generate runID in format: benchmark_provider_datetime
-function generateRunId(benchmarkName: string, providerName: string): string {
+// Helper function to generate runID in format: benchmark_provider_datetime[_formal]
+function generateRunId(benchmarkName: string, providerName: string, formal: boolean = false): string {
     const now = new Date();
     const year = now.getFullYear();
     const month = String(now.getMonth() + 1).padStart(2, '0');
@@ -27,7 +27,8 @@ function generateRunId(benchmarkName: string, providerName: string): string {
     const seconds = String(now.getSeconds()).padStart(2, '0');
 
     const datetime = `${year}${month}${day}_${hours}${minutes}${seconds}`;
-    return `${benchmarkName}_${providerName}_${datetime}`;
+    const baseId = `${benchmarkName}_${providerName}_${datetime}`;
+    return formal ? `${baseId}_formal` : baseId;
 }
 
 // Parse command line arguments
@@ -54,9 +55,14 @@ if (args.length < 2) {
     console.error('  bun run benchmark LongMemEval supermemory --skipIngest');
     console.error('  bun run benchmark LongMemEval supermemory --skipSearch');
     console.error('');
-    console.error('Note: runId is auto-generated as benchmark_provider_datetime');
+    console.error('Formal runs (for visualization dashboard):');
+    console.error('  bun run benchmark NoLiMa supermemory --formal');
+    console.error('  bun run benchmark LongMemEval mem0 --formal --limit=50');
+    console.error('');
+    console.error('Note: runId is auto-generated as benchmark_provider_datetime[_formal]');
     console.error('      All results are stored in results/ directory');
     console.error('      Multiple models will create separate evaluation reports for each combination');
+    console.error('      Use --formal flag to mark runs for inclusion in visualization dashboard');
     process.exit(1);
 }
 
@@ -64,10 +70,13 @@ const benchmarkName = args[0];
 const providerName = args[1];
 let options = args.slice(2);
 
+// Check if --formal flag is present
+const hasFormal = options.some(opt => opt === '--formal');
+
 // Auto-generate runId if not provided
 const hasRunId = options.some(opt => opt.startsWith('--runId='));
 if (!hasRunId) {
-    const runId = generateRunId(benchmarkName, providerName);
+    const runId = generateRunId(benchmarkName, providerName, hasFormal);
     options.unshift(`--runId=${runId}`);
     console.log(`Auto-generated runId: ${runId}`);
 }

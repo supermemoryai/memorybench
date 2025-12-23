@@ -35,7 +35,7 @@ export async function evaluateAllQuestions(
     runId: string,
     answeringModel: string,
     questionTypes: string[],
-    options?: EvaluateOptions
+    options?: EvaluateOptions & { providerName?: string }
 ) {
     const judgeModel = options?.judgeModel || 'gpt-4o';
 
@@ -236,6 +236,32 @@ export async function evaluateAllQuestions(
     console.log('='.repeat(60));
     console.log('');
     console.log(`Results saved to: ${outputPath}`);
+
+    // Save cumulative summary for visualization at run root
+    const summaryPath = join(process.cwd(), 'results', runId, 'evaluation-summary.json');
+    const visualizationSummary = {
+        benchmark: 'LongMemEval',
+        metadata: {
+            runId,
+            provider: options?.providerName || 'unknown',
+            answeringModel,
+            judgeModel,
+            questionTypes: questionTypes.length > 0 ? questionTypes : ['all'],
+            evaluatedAt: new Date().toISOString(),
+            totalQuestions: total,
+            correctAnswers: correct,
+            accuracy: `${accuracy.toFixed(2)}%`
+        },
+        byQuestionType: Object.entries(byQuestionType).map(([type, stats]) => ({
+            questionType: type,
+            correct: stats.correct,
+            total: stats.total,
+            accuracy: `${((stats.correct / stats.total) * 100).toFixed(2)}%`
+        })),
+        evaluations: evaluations
+    };
+    writeFileSync(summaryPath, JSON.stringify(visualizationSummary, null, 2));
+    console.log(`Visualization summary saved to: ${summaryPath}`);
 }
 
 function deduplicateAndSortChunks(chunks: Chunk[]): Chunk[] {
