@@ -16,6 +16,7 @@ interface RunOptions {
     skipEvaluate?: boolean;
     answeringModel?: string;
     judgeModel?: string;
+    evalMethod?: 'exact' | 'f1' | 'llm';
     startPosition?: number;
     endPosition?: number;
     limit?: number;
@@ -28,6 +29,7 @@ function parseOptions(args: string[]): RunOptions {
         skipIngest: false,
         skipSearch: false,
         skipEvaluate: false,
+        evalMethod: 'exact', // Default to exact match (non-LLM)
     };
 
     for (const arg of args) {
@@ -43,6 +45,13 @@ function parseOptions(args: string[]): RunOptions {
             options.answeringModel = arg.split('=')[1];
         } else if (arg.startsWith('--judgeModel=')) {
             options.judgeModel = arg.split('=')[1];
+        } else if (arg.startsWith('--evalMethod=')) {
+            const method = arg.split('=')[1] as 'exact' | 'f1' | 'llm';
+            if (!['exact', 'f1', 'llm'].includes(method)) {
+                console.warn(`Unknown eval method '${method}', using 'exact'`);
+            } else {
+                options.evalMethod = method;
+            }
         } else if (arg.startsWith('--startPosition=')) {
             options.startPosition = parseInt(arg.split('=')[1], 10);
         } else if (arg.startsWith('--endPosition=')) {
@@ -74,15 +83,15 @@ export async function runLoCoMo(
         options.endPosition = options.limit;
     }
 
+    const evalMethod = options.evalMethod || 'exact';
+
     console.log('=================================');
     console.log('   LoCoMo Benchmark Runner');
     console.log('=================================');
     console.log(`Provider: ${providerName}`);
     console.log(`Run ID: ${runId}`);
     console.log(`Answering Model: ${answeringModel}`);
-    if (options.judgeModel) {
-        console.log(`Judge Model: ${options.judgeModel}`);
-    }
+    console.log(`Eval Method: ${evalMethod}${evalMethod === 'llm' ? ` (Judge: ${options.judgeModel || 'gpt-4o'})` : ' (no LLM judge)'}`);
     if (options.startPosition && options.endPosition) {
         console.log(`Sample Range: ${options.startPosition}-${options.endPosition}`);
     }
@@ -126,6 +135,7 @@ export async function runLoCoMo(
                 startPosition: options.startPosition,
                 endPosition: options.endPosition,
                 judgeModel: options.judgeModel,
+                evalMethod,
                 providerName
             });
         } else {
@@ -158,7 +168,10 @@ function displayEvaluationSummary(runId: string): void {
             console.log(`Benchmark: ${summary.benchmark}`);
             console.log(`Provider:  ${summary.metadata.provider}`);
             console.log(`Answering Model: ${summary.metadata.answeringModel}`);
-            console.log(`Judge Model: ${summary.metadata.judgeModel}`);
+            console.log(`Eval Method: ${summary.metadata.evalMethod || 'llm'}`);
+            if (summary.metadata.evalMethod === 'llm' || !summary.metadata.evalMethod) {
+                console.log(`Judge Model: ${summary.metadata.judgeModel}`);
+            }
             console.log('');
             console.log('Performance Metrics:');
             console.log(`  Overall Accuracy: ${summary.metadata.accuracy}`);

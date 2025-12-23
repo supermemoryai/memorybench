@@ -6,9 +6,9 @@
 import { readFileSync, existsSync, mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { generateText } from 'ai';
-import { openai } from '@ai-sdk/openai';
-import { createVertex } from '@ai-sdk/google-vertex';
 import dedent from 'dedent';
+import { withRetry } from '../../../core/utils/retry';
+import { getModel, getProviderName } from '../../../core/utils/models';
 import type { TestCase, SearchResult, EvaluationResult, NoLiMaReport, PerformanceMetrics } from '../types';
 
 interface EvaluateOptions {
@@ -45,21 +45,9 @@ async function evaluateWithModels(
     judgeModel: string
 ) {
     console.log(`\n${'='.repeat(60)}`);
-    console.log(`Evaluating with Answering: ${answeringModel}, Judge: ${judgeModel}`);
+    console.log(`Evaluating with Answering: ${answeringModel} (${getProviderName(answeringModel)})`);
+    console.log(`Judge: ${judgeModel} (${getProviderName(judgeModel)})`);
     console.log('='.repeat(60));
-
-    // Initialize Vertex only for Gemini models
-    let vertex: any = null;
-    if (answeringModel.startsWith('gemini')) {
-        if (!process.env.GOOGLE_VERTEX_PROJECT_ID) {
-            throw new Error('GOOGLE_VERTEX_PROJECT_ID environment variable is required for Gemini models');
-        }
-
-        vertex = createVertex({
-            project: process.env.GOOGLE_VERTEX_PROJECT_ID,
-            location: process.env.GOOGLE_VERTEX_LOCATION || 'us-central1',
-        });
-    }
 
     // Load test cases and search results
     const ingestDir = join(process.cwd(), 'results', runId, 'checkpoints', 'ingest');
@@ -87,6 +75,8 @@ async function evaluateWithModels(
 
     const evaluationCheckpointPath = join(checkpointDir, `eval-${runId}.json`);
 
+    const failedEvaluations: { testCaseId: string; error: string }[] = [];
+
     for (let i = 0; i < searchResults.length; i++) {
         const searchResult = searchResults[i];
         const testCase = testCases.find(tc => tc.testId === searchResult.testCaseId);
@@ -105,8 +95,7 @@ async function evaluateWithModels(
             const generatedAnswer = await generateAnswer(
                 testCase.question,
                 searchResult.retrievedContext,
-                answeringModel,
-                vertex
+                answeringModel
             );
 
             // Evaluate using judge model
@@ -139,7 +128,22 @@ async function evaluateWithModels(
             // Small delay between evaluations
             await new Promise(resolve => setTimeout(resolve, 500));
         } catch (error) {
-            console.error(`  ✗ Failed: ${error instanceof Error ? error.message : String(error)}`);
+            const errorMsg = error instanceof Error ? error.message : String(error);
+            console.error(`  ✗ Failed (continuing): ${errorMsg.substring(0, 100)}`);
+            failedEvaluations.push({ testCaseId: testCase.testId, error: errorMsg });
+            // Continue to next evaluation instead of stopping
+        }
+    }
+
+    // Report failed evaluations
+    if (failedEvaluations.length > 0) {
+        console.log('');
+        console.log(`⚠ ${failedEvaluations.length} evaluations failed and were skipped:`);
+        for (const failed of failedEvaluations.slice(0, 5)) {
+            console.log(`  - ${failed.testCaseId}: ${failed.error.substring(0, 80)}`);
+        }
+        if (failedEvaluations.length > 5) {
+            console.log(`  ... and ${failedEvaluations.length - 5} more`);
         }
     }
 
@@ -204,12 +208,21 @@ async function evaluateWithModels(
     console.log(`Visualization summary saved to: ${summaryPath}`);
 }
 
+// Rough token estimate: ~4 characters per token
+const CHARS_PER_TOKEN = 4;
+const MAX_CONTEXT_TOKENS = 30000; // 30k tokens - leave room for prompt + response in 128k context
+const MAX_CONTEXT_CHARS = MAX_CONTEXT_TOKENS * CHARS_PER_TOKEN;
+
 async function generateAnswer(
     question: string,
     retrievedContext: string,
-    model: string,
-    vertex: any
+    model: string
 ): Promise<string> {
+    // Check if context is too large and needs chunking
+    if (retrievedContext.length > MAX_CONTEXT_CHARS) {
+        return await generateAnswerWithChunking(question, retrievedContext, model);
+    }
+
     const prompt = dedent`
         You will answer a question based on the following context:
 
@@ -220,24 +233,79 @@ async function generateAnswer(
         Return only the final answer with no additional explanation or reasoning.
     `;
 
-    let selectedModel: any;
-    if (model.startsWith('gemini')) {
-        if (!vertex) {
-            throw new Error('Vertex AI not initialized for Gemini model');
-        }
-        selectedModel = vertex(model);
-    } else {
-        selectedModel = openai(model);
+    return await withRetry(async () => {
+        const result = await generateText({
+            model: getModel(model),
+            messages: [
+                { role: 'user', content: prompt }
+            ],
+        });
+        return result.text.trim();
+    });
+}
+
+/**
+ * Handle large contexts by splitting into chunks and processing sequentially
+ */
+async function generateAnswerWithChunking(
+    question: string,
+    retrievedContext: string,
+    model: string
+): Promise<string> {
+    // Split context into 4 chunks
+    const chunkSize = Math.ceil(retrievedContext.length / 4);
+    const chunks: string[] = [];
+    
+    for (let i = 0; i < retrievedContext.length; i += chunkSize) {
+        chunks.push(retrievedContext.slice(i, i + chunkSize));
     }
 
-    const result = await generateText({
-        model: selectedModel,
-        messages: [
-            { role: 'user', content: prompt }
-        ],
-    });
+    console.log(`    → Context too large (${Math.round(retrievedContext.length / 1000)}k chars), splitting into ${chunks.length} chunks...`);
 
-    return result.text.trim();
+    const partialAnswers: string[] = [];
+
+    for (let i = 0; i < chunks.length; i++) {
+        const chunk = chunks[i];
+        console.log(`    → Processing chunk ${i + 1}/${chunks.length} (${Math.round(chunk.length / 1000)}k chars)...`);
+
+        const chunkPrompt = dedent`
+            You will answer a question based on the following context (Part ${i + 1} of ${chunks.length}).
+            
+            ${chunk}
+
+            Question: ${question}
+
+            If the answer is in this chunk, return ONLY the answer.
+            If the answer is NOT in this chunk, respond with: "NO_ANSWER_FOUND"
+        `;
+
+        const partialAnswer = await withRetry(async () => {
+            const result = await generateText({
+                model: getModel(model),
+                messages: [
+                    { role: 'user', content: chunkPrompt }
+                ],
+            });
+            return result.text.trim();
+        });
+
+        if (!partialAnswer.includes('NO_ANSWER_FOUND')) {
+            partialAnswers.push(partialAnswer);
+        }
+
+        // Delay between chunks to avoid rate limits
+        if (i < chunks.length - 1) {
+            await new Promise(resolve => setTimeout(resolve, 2000));
+        }
+    }
+
+    // Return the first valid answer found, or indicate no answer
+    if (partialAnswers.length === 0) {
+        return "Unable to find the answer in the provided context.";
+    }
+
+    // If multiple answers, return the first one (NoLiMa expects a single specific answer)
+    return partialAnswers[0];
 }
 
 async function judgeAnswer(
@@ -259,14 +327,15 @@ async function judgeAnswer(
         Respond with only "yes" or "no".
     `;
 
-    const result = await generateText({
-        model: openai(judgeModel),
-        messages: [
-            { role: 'user', content: judgementPrompt }
-        ],
+    return await withRetry(async () => {
+        const result = await generateText({
+            model: getModel(judgeModel),
+            messages: [
+                { role: 'user', content: judgementPrompt }
+            ],
+        });
+        return result.text.trim().toLowerCase().includes('yes');
     });
-
-    return result.text.trim().toLowerCase().includes('yes');
 }
 
 function createReport(

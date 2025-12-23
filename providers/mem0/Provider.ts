@@ -95,7 +95,9 @@ export default class Mem0Provider extends BaseProvider {
         }
 
         const data = await response.json();
-        const results = data.results || data.memories || [];
+        
+        // Mem0 API returns array directly, or wrapped in results/memories
+        const results = Array.isArray(data) ? data : (data.results || data.memories || []);
 
         return results.map((result: any) => ({
             id: result.id || result.memory_id || '',

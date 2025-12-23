@@ -49,8 +49,9 @@ MEM0_API_URL=https://api.mem0.ai/v1
 ZEP_API_KEY=your_zep_key
 ZEP_API_URL=https://api.getzep.com
 
-# Required for evaluation (LLM-as-a-judge)
-OPENAI_API_KEY=your_openai_key
+# Evaluation Model API Keys (at least one required)
+OPENAI_API_KEY=your_openai_key           # For GPT models (gpt-4o, gpt-4o-mini, o1, etc.)
+ANTHROPIC_API_KEY=your_anthropic_key     # For Claude models (claude-3-5-sonnet, etc.)
 
 # Optional: For Gemini models
 GOOGLE_VERTEX_PROJECT_ID=your_project_id
@@ -118,11 +119,26 @@ bun run benchmark LongMemEval mem0
 # Custom models for answering and judging
 bun run benchmark LoCoMo supermemory --answeringModel=gpt-4o --judgeModel=gpt-4o
 
+# LoCoMo with different evaluation methods
+bun run benchmark LoCoMo supermemory --evalMethod=exact    # Default: exact match (fast, no judge LLM)
+bun run benchmark LoCoMo supermemory --evalMethod=f1       # F1 token overlap score
+bun run benchmark LoCoMo supermemory --evalMethod=llm      # LLM-as-a-judge (slower)
+
+# Use Claude for evaluation
+bun run benchmark NoLiMa supermemory --answeringModel=claude-3-5-sonnet-20241022 --judgeModel=claude-3-5-sonnet-20241022
+
+# Mix providers (Claude for answering, GPT for judging)
+bun run benchmark LongMemEval mem0 --answeringModel=claude-3-5-sonnet-20241022 --judgeModel=gpt-4o
+
 # Skip phases (useful for resuming or re-evaluating)
 bun run benchmark LongMemEval supermemory --skipIngest --skipSearch
 
 # Mark as formal run (for dashboard visualization)
 bun run benchmark NoLiMa supermemory --formal --limit=50
+
+# Continue a previous run that was interrupted
+bun run benchmark LoCoMo fullcontext --continue
+bun run benchmark NoLiMa supermemory --formal --continue
 ```
 
 ### CLI Options
@@ -130,11 +146,13 @@ bun run benchmark NoLiMa supermemory --formal --limit=50
 | Option | Description |
 |--------|-------------|
 | `--limit=<N>` | Limit number of test cases to process |
+| `--continue` | Continue the most recent matching run (same benchmark/provider) |
 | `--skipIngest` | Skip ingestion phase |
 | `--skipSearch` | Skip search phase |
 | `--skipEvaluate` | Skip evaluation phase |
-| `--answeringModel=<model>` | Model for generating answers (default: `gpt-4o`) |
-| `--judgeModel=<model>` | Model for judging answers (default: `gpt-4o`) |
+| `--answeringModel=<model>` | Model for generating answers (default: `gpt-4o`). Supports OpenAI, Anthropic, and Gemini |
+| `--judgeModel=<model>` | Model for judging answers (default: `gpt-4o`). Supports OpenAI, Anthropic, and Gemini |
+| `--evalMethod=<method>` | Evaluation method for LoCoMo: `exact` (default), `f1`, or `llm` |
 | `--runId=<id>` | Custom run ID (auto-generated if not provided) |
 | `--formal` | Mark run for inclusion in visualization dashboard |
 | `--topK=<N>` | Number of results to retrieve (benchmark-specific) |
@@ -237,10 +255,38 @@ Add the required environment variable to your `.env` file.
 Follow the dataset preparation steps for the specific benchmark.
 
 ### Rate Limiting
-The system includes delays between API calls. If you hit rate limits, the checkpoint system allows resuming where you left off.
+The system includes automatic retry with exponential backoff for rate limit errors. If all retries fail, the evaluation continues to the next item and reports failures at the end.
 
-### Resume Failed Runs
-Simply re-run the same command with the same `--runId` to resume from the last checkpoint.
+**If you're hitting rate limits frequently:**
+
+1. **Use a model with higher rate limits:**
+   ```bash
+   # gpt-4o-mini has 10x higher TPM limits than gpt-4o
+   bun run benchmark LoCoMo fullcontext --answeringModel=gpt-4o-mini --judgeModel=gpt-4o-mini
+   ```
+
+2. **Limit retrieved context (especially for fullcontext provider):**
+   ```bash
+   # fullcontext returns ALL documents by default - use topK to limit
+   bun run benchmark LoCoMo fullcontext --topK=5
+   ```
+
+3. **Process smaller batches:**
+   ```bash
+   bun run benchmark LoCoMo fullcontext --limit=5
+   ```
+
+### Resume Failed/Interrupted Runs
+Use `--continue` to automatically find and resume the most recent matching run:
+```bash
+bun run benchmark LoCoMo fullcontext --continue
+bun run benchmark NoLiMa supermemory --formal --continue
+```
+
+Or manually specify the run ID:
+```bash
+bun run benchmark LongMemEval supermemory --runId=LongMemEval_supermemory_20251223_143022
+```
 
 ## Project Structure
 

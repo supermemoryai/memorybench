@@ -81,11 +81,13 @@ export async function searchAllQuestions(
             const questionDate = data.question_date;
             const answer = data.answer;
 
-            // Perform search using unified provider interface
+            // Perform search using unified provider interface with timing
+            const searchStart = performance.now();
             const searchResults = await provider.search(question, containerTag, {
                 limit: 10,
                 threshold: 0.3,
             });
+            const searchDurationMs = Math.round(performance.now() - searchStart);
 
             // Transform results to match expected format
             const transformedResults = {
@@ -117,6 +119,7 @@ export async function searchAllQuestions(
                         rewrite: false,
                     },
                     timestamp: new Date().toISOString(),
+                    searchDurationMs,
                 },
                 searchResults: transformedResults,
             };

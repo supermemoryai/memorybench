@@ -20,6 +20,14 @@ Unlike traditional needle-in-a-haystack tests that allow models to exploit liter
 3. **Effective Length**: Longest context maintaining ≥85% of base score
 4. **Retrieval Rate**: Percentage of times the needle was successfully retrieved
 
+### Retrieval Rate Calculation
+
+The retrieval rate uses a **semantic matching** approach rather than exact substring matching. This is fair to memory providers that:
+- Extract and normalize facts (e.g., "Actually, Yuki lives..." → "Yuki lives...")
+- Store semantic content rather than raw text
+
+The check requires **≥70% of key content words** from the needle to be present in the retrieved context. This ensures the semantic meaning is preserved while not penalizing text normalization.
+
 ## Dataset
 
 The benchmark includes:

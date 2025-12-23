@@ -1,0 +1,68 @@
+{
+  "generatedAt": "2025-12-23T16:14:53.597Z",
+  "benchmarks": {
+    "NoLiMa": {
+      "providerCount": 2,
+      "providers": [
+        {
+          "provider": "supermemory",
+          "runId": "NoLiMa_supermemory_20251223_043613_formal",
+          "overallAccuracy": "18.08%",
+          "totalQuestions": 260,
+          "correctAnswers": 47,
+          "evaluatedAt": "2025-12-23T13:01:29.255Z"
+        },
+        {
+          "provider": "mem0",
+          "runId": "NoLiMa_mem0_20251223_043609_formal",
+          "overallAccuracy": "16.54%",
+          "totalQuestions": 260,
+          "correctAnswers": 43,
+          "evaluatedAt": "2025-12-23T12:56:36.406Z"
+        }
+      ]
+    },
+    "LoCoMo": {
+      "providerCount": 3,
+      "providers": [
+        {
+          "provider": "zep",
+          "runId": "LoCoMo_zep_20251223_073247_formal",
+          "overallAccuracy": "0.10%",
+          "totalQuestions": 999,
+          "correctAnswers": 1,
+          "evaluatedAt": "2025-12-23T16:07:13.891Z"
+        },
+        {
+          "provider": "mem0",
+          "runId": "LoCoMo_mem0_20251223_042821_formal",
+          "overallAccuracy": "7.11%",
+          "totalQuestions": 999,
+          "correctAnswers": 71,
+          "evaluatedAt": "2025-12-23T13:30:52.295Z"
+        },
+        {
+          "provider": "supermemory",
+          "runId": "LoCoMo_supermemory_20251223_042806_formal",
+          "overallAccuracy": "8.11%",
+          "totalQuestions": 999,
+          "correctAnswers": 81,
+          "evaluatedAt": "2025-12-23T13:30:23.917Z"
+        }
+      ]
+    },
+    "LongMemEval": {
+      "providerCount": 1,
+      "providers": [
+        {
+          "provider": "zep",
+          "runId": "LongMemEval_zep_20251223_064432_formal",
+          "overallAccuracy": "0.00%",
+          "totalQuestions": 5,
+          "correctAnswers": 0,
+          "evaluatedAt": "2025-12-23T14:47:20.665Z"
+        }
+      ]
+    }
+  }
+}

@@ -39,6 +39,7 @@ export interface SearchResult {
     retrievedContext: string;
     retrievedNeedle: boolean; // Did retrieval include the needle?
     timestamp: string;
+    searchDurationMs?: number; // API call duration in milliseconds
 }
 
 export interface EvaluationResult {

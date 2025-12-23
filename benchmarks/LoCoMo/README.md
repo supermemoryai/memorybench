@@ -51,11 +51,22 @@ bun run benchmark LoCoMo supermemory --runId=test --limit=1
 bun run benchmark LoCoMo supermemory --runId=full-run
 ```
 
-**Use different models:**
+**Use different evaluation methods:**
 ```bash
-bun run benchmark LoCoMo supermemory --runId=test \
-  --answeringModel=gpt-4o \
-  --judgeModel=gpt-4o
+# Default: exact match (fast, no LLM judge needed)
+bun run benchmark LoCoMo supermemory --runId=test --evalMethod=exact
+
+# F1 score (token overlap)
+bun run benchmark LoCoMo supermemory --runId=test --evalMethod=f1
+
+# LLM-as-a-judge (slower, more expensive)
+bun run benchmark LoCoMo supermemory --runId=test --evalMethod=llm --judgeModel=gpt-4o
+```
+
+**Use different answering models:**
+```bash
+bun run benchmark LoCoMo supermemory --runId=test --answeringModel=gpt-4o
+bun run benchmark LoCoMo supermemory --runId=test --answeringModel=claude-3-5-sonnet-20241022
 ```
 
 **Skip phases:**
@@ -76,7 +87,8 @@ bun run benchmark LoCoMo supermemory --runId=test --skipIngest --skipSearch
 | `--startPosition=<N>` | Start at sample N | 1 |
 | `--endPosition=<N>` | End at sample N | 10 |
 | `--answeringModel=<model>` | LLM for generating answers | `gpt-4o` |
-| `--judgeModel=<model>` | LLM for evaluating answers | `gpt-4o` |
+| `--evalMethod=<method>` | Evaluation method: `exact`, `f1`, or `llm` | `exact` |
+| `--judgeModel=<model>` | LLM for judging (only used when evalMethod=llm) | `gpt-4o` |
 | `--topK=<N>` | Number of context chunks to retrieve | 5 |
 | `--sessionDelay=<ms>` | Delay between session ingestions | 10000 |
 | `--skipIngest` | Skip ingestion phase | false |

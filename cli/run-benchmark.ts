@@ -6,6 +6,8 @@
  */
 
 import { parseArgs } from "util";
+import { readdirSync, existsSync, statSync } from 'fs';
+import { join } from 'path';
 import { ProviderLoader } from '../core/providers/ProviderLoader';
 import { getProviderRegistry } from '../core/providers/ProviderRegistry';
 
@@ -31,6 +33,61 @@ function generateRunId(benchmarkName: string, providerName: string, formal: bool
     return formal ? `${baseId}_formal` : baseId;
 }
 
+/**
+ * Find the most recent run ID matching the benchmark and provider
+ * @param benchmarkName - Benchmark name to match
+ * @param providerName - Provider name to match
+ * @param formal - Whether to match only formal runs
+ * @returns The most recent matching run ID, or null if none found
+ */
+function findLastMatchingRunId(benchmarkName: string, providerName: string, formal: boolean): string | null {
+    const resultsDir = join(process.cwd(), 'results');
+    
+    if (!existsSync(resultsDir)) {
+        return null;
+    }
+
+    // Get all directories in results/
+    const runDirs = readdirSync(resultsDir)
+        .filter(dir => {
+            const fullPath = join(resultsDir, dir);
+            return statSync(fullPath).isDirectory();
+        })
+        .filter(dir => {
+            // Match pattern: {Benchmark}_{provider}_{datetime}[_formal]
+            const prefix = `${benchmarkName}_${providerName}_`;
+            if (!dir.startsWith(prefix)) {
+                return false;
+            }
+            
+            // Check formal suffix matching
+            const isFormalRun = dir.endsWith('_formal');
+            if (formal && !isFormalRun) {
+                return false;
+            }
+            if (!formal && isFormalRun) {
+                return false;
+            }
+            
+            return true;
+        })
+        .sort((a, b) => {
+            // Sort by datetime in descending order (most recent first)
+            // Extract datetime part: after benchmark_provider_ and before optional _formal
+            const extractDatetime = (s: string) => {
+                const prefix = `${benchmarkName}_${providerName}_`;
+                let rest = s.slice(prefix.length);
+                if (rest.endsWith('_formal')) {
+                    rest = rest.slice(0, -7);
+                }
+                return rest;
+            };
+            return extractDatetime(b).localeCompare(extractDatetime(a));
+        });
+
+    return runDirs.length > 0 ? runDirs[0] : null;
+}
+
 // Parse command line arguments
 const args = process.argv.slice(2);
 
@@ -45,6 +102,10 @@ if (args.length < 2) {
     console.error('  bun run benchmark LongMemEval supermemory --limit=5');
     console.error('  bun run benchmark LoCoMo supermemory --limit=2');
     console.error('  bun run benchmark NoLiMa supermemory --limit=10');
+    console.error('');
+    console.error('Continue a previous run:');
+    console.error('  bun run benchmark LoCoMo fullcontext --continue');
+    console.error('  bun run benchmark NoLiMa supermemory --formal --continue');
     console.error('');
     console.error('Multiple models (comma-separated):');
     console.error('  bun run benchmark NoLiMa supermemory --answeringModel=gpt-4o,gpt-4o-mini --judgeModel=gpt-4o');
@@ -63,6 +124,7 @@ if (args.length < 2) {
     console.error('      All results are stored in results/ directory');
     console.error('      Multiple models will create separate evaluation reports for each combination');
     console.error('      Use --formal flag to mark runs for inclusion in visualization dashboard');
+    console.error('      Use --continue to resume the most recent matching run');
     process.exit(1);
 }
 
@@ -73,12 +135,30 @@ let options = args.slice(2);
 // Check if --formal flag is present
 const hasFormal = options.some(opt => opt === '--formal');
 
-// Auto-generate runId if not provided
+// Check if --continue flag is present
+const hasContinue = options.some(opt => opt === '--continue');
+// Remove --continue from options as it's handled here
+options = options.filter(opt => opt !== '--continue');
+
+// Determine runId
 const hasRunId = options.some(opt => opt.startsWith('--runId='));
 if (!hasRunId) {
-    const runId = generateRunId(benchmarkName, providerName, hasFormal);
-    options.unshift(`--runId=${runId}`);
-    console.log(`Auto-generated runId: ${runId}`);
+    if (hasContinue) {
+        // Find the most recent matching run
+        const lastRunId = findLastMatchingRunId(benchmarkName, providerName, hasFormal);
+        if (!lastRunId) {
+            console.error(`Error: No previous run found for ${benchmarkName} with ${providerName}${hasFormal ? ' (formal)' : ''}`);
+            console.error('Cannot continue - please start a new run instead.');
+            process.exit(1);
+        }
+        options.unshift(`--runId=${lastRunId}`);
+        console.log(`Continuing previous run: ${lastRunId}`);
+    } else {
+        // Generate new runId
+        const runId = generateRunId(benchmarkName, providerName, hasFormal);
+        options.unshift(`--runId=${runId}`);
+        console.log(`Auto-generated runId: ${runId}`);
+    }
 }
 
 // Validate benchmark

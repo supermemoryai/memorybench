@@ -55,7 +55,9 @@ export async function searchMemories(
     }
 
     const data = await response.json();
-    const results = data.results || [];
+    
+    // Handle both array response and wrapped response
+    const results = Array.isArray(data) ? data : (data.results || []);
 
     return results.map((result: any) => ({
         id: result.message?.uuid || result.uuid || '',

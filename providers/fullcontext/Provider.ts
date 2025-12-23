@@ -47,6 +47,7 @@ export default class FullContextProvider extends BaseProvider {
 
     /**
      * Search returns ALL content (no retrieval, full context baseline)
+     * Note: By default returns all documents. Use options.limit to cap results.
      */
     public async search(
         query: string,
@@ -56,12 +57,17 @@ export default class FullContextProvider extends BaseProvider {
         const store = this.stores.get(containerTag) || [];
 
         // Return ALL documents with score 1.0 (perfect match since we're using full context)
-        const results: SearchResult[] = store.map((doc, index) => ({
+        let results: SearchResult[] = store.map((doc, index) => ({
             id: `${containerTag}-${index}`,
             content: doc.content,
             score: 1.0,
             metadata: doc.metadata,
         }));
+
+        // Apply limit if specified (useful for avoiding rate limits during evaluation)
+        if (options?.limit && options.limit > 0) {
+            results = results.slice(0, options.limit);
+        }
 
         return results;
     }

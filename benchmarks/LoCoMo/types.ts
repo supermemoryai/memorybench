@@ -9,7 +9,8 @@ export interface LoCoMoBenchmarkItem {
 
 export interface qaItem {
   question: string;
-  answer: string | number;
+  answer?: string | number;           // Regular answer (categories 1-4)
+  adversarial_answer?: string;        // Wrong answer to avoid (category 5)
   evidence: Array<string>;
   category: number;
 }

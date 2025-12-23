@@ -1,0 +1,1814 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MemoryBench | Benchmark Dashboard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <style>
+        :root {
+            /* Supermemory-inspired color palette */
+            --bg-primary: #0B0D14;
+            --bg-secondary: #12151E;
+            --bg-card: #171B26;
+            --bg-hover: #1E2333;
+            --border-color: #252A3A;
+            --border-hover: #3B82F6;
+            
+            /* Text colors */
+            --text-primary: #F8FAFC;
+            --text-secondary: #94A3B8;
+            --text-muted: #64748B;
+            
+            /* Accent colors */
+            --accent-blue: #3B82F6;
+            --accent-blue-glow: rgba(59, 130, 246, 0.3);
+            --accent-cyan: #06B6D4;
+            --accent-purple: #8B5CF6;
+            --accent-green: #10B981;
+            --accent-orange: #F97316;
+            --accent-yellow: #FBBF24;
+            --accent-red: #EF4444;
+            
+            /* Provider colors */
+            --color-supermemory: #3B82F6;
+            --color-zep: #F97316;
+            --color-mem0: #FBBF24;
+            --color-fullcontext: #8B5CF6;
+            --color-langchain: #10B981;
+            
+            /* Gradients */
+            --gradient-blue: linear-gradient(135deg, #3B82F6 0%, #1D4ED8 100%);
+            --gradient-card: linear-gradient(180deg, rgba(59, 130, 246, 0.05) 0%, transparent 100%);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            line-height: 1.6;
+        }
+
+        /* Background pattern */
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: 
+                radial-gradient(ellipse 80% 50% at 50% -20%, rgba(59, 130, 246, 0.15), transparent),
+                radial-gradient(ellipse 60% 40% at 100% 0%, rgba(139, 92, 246, 0.1), transparent);
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 40px 24px;
+            position: relative;
+            z-index: 1;
+        }
+
+        /* Header */
+        .header {
+            text-align: center;
+            margin-bottom: 48px;
+        }
+
+        .logo {
+            display: inline-flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+
+        .logo-icon {
+            width: 48px;
+            height: 48px;
+            background: var(--gradient-blue);
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            box-shadow: 0 0 30px var(--accent-blue-glow);
+        }
+
+        .logo-text {
+            font-size: 28px;
+            font-weight: 700;
+            background: linear-gradient(135deg, var(--text-primary) 0%, var(--text-secondary) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .subtitle {
+            color: var(--text-secondary);
+            font-size: 16px;
+            font-weight: 400;
+        }
+
+        /* Benchmark Tabs */
+        .tabs-container {
+            display: flex;
+            justify-content: center;
+            margin-bottom: 32px;
+        }
+
+        .tabs {
+            display: inline-flex;
+            background: var(--bg-secondary);
+            border-radius: 12px;
+            padding: 4px;
+            gap: 4px;
+            border: 1px solid var(--border-color);
+        }
+
+        .tab {
+            padding: 12px 28px;
+            background: transparent;
+            border: none;
+            color: var(--text-secondary);
+            font-family: inherit;
+            font-size: 15px;
+            font-weight: 500;
+            cursor: pointer;
+            border-radius: 8px;
+            transition: all 0.2s ease;
+        }
+
+        .tab:hover {
+            color: var(--text-primary);
+            background: var(--bg-hover);
+        }
+
+        .tab.active {
+            background: var(--accent-blue);
+            color: white;
+            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+        }
+
+        /* Provider Controls */
+        .controls {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 24px;
+            margin-bottom: 32px;
+        }
+
+        .controls-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+        }
+
+        .controls-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .formal-toggle {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 14px;
+            color: var(--text-secondary);
+        }
+
+        .formal-toggle input {
+            width: 18px;
+            height: 18px;
+            accent-color: var(--accent-blue);
+            cursor: pointer;
+        }
+
+        .provider-toggles {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+
+        .provider-toggle {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 16px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .provider-toggle:hover {
+            border-color: var(--border-hover);
+            background: var(--bg-hover);
+        }
+
+        .provider-toggle.active {
+            border-color: var(--border-hover);
+            background: rgba(59, 130, 246, 0.1);
+        }
+
+        .provider-toggle input {
+            display: none;
+        }
+
+        .provider-color {
+            width: 16px;
+            height: 16px;
+            border-radius: 4px;
+            flex-shrink: 0;
+        }
+
+        .provider-name {
+            font-size: 14px;
+            font-weight: 500;
+            color: var(--text-primary);
+            text-transform: capitalize;
+        }
+
+        .provider-toggle:not(.active) .provider-name {
+            color: var(--text-muted);
+        }
+
+        /* Stats Grid */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+            margin-bottom: 32px;
+        }
+
+        .stat-card {
+            background: var(--bg-card);
+            background-image: var(--gradient-card);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 20px;
+            transition: all 0.2s ease;
+        }
+
+        .stat-card:hover {
+            border-color: var(--border-hover);
+            transform: translateY(-2px);
+        }
+
+        .stat-label {
+            font-size: 13px;
+            color: var(--text-muted);
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+        }
+
+        .stat-value {
+            font-size: 32px;
+            font-weight: 700;
+            color: var(--text-primary);
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .stat-value.highlight {
+            color: var(--accent-blue);
+        }
+
+        .stat-suffix {
+            font-size: 18px;
+            color: var(--text-secondary);
+        }
+
+        /* Chart Section */
+        .chart-section {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 32px;
+            margin-bottom: 32px;
+        }
+
+        .chart-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 24px;
+        }
+
+        .chart-title {
+            font-size: 20px;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .chart-subtitle {
+            font-size: 14px;
+            color: var(--text-secondary);
+            margin-top: 4px;
+        }
+
+        .chart-container {
+            position: relative;
+            height: 400px;
+        }
+
+        /* Legend */
+        .legend {
+            display: flex;
+            justify-content: center;
+            flex-wrap: wrap;
+            gap: 24px;
+            margin-top: 24px;
+            padding-top: 24px;
+            border-top: 1px solid var(--border-color);
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .legend-color {
+            width: 12px;
+            height: 12px;
+            border-radius: 3px;
+        }
+
+        .legend-label {
+            font-size: 14px;
+            color: var(--text-secondary);
+            text-transform: capitalize;
+        }
+
+        /* Detailed Results Table */
+        .details-section {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 32px;
+            margin-bottom: 32px;
+        }
+
+        .details-title {
+            font-size: 18px;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 20px;
+        }
+
+        .provider-details {
+            display: grid;
+            gap: 20px;
+        }
+
+        .provider-detail-card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            overflow: hidden;
+        }
+
+        .provider-detail-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 16px 20px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .provider-detail-name {
+            font-size: 16px;
+            font-weight: 600;
+            color: var(--text-primary);
+            text-transform: capitalize;
+        }
+
+        .provider-detail-meta {
+            font-size: 13px;
+            color: var(--text-muted);
+            margin-left: auto;
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .provider-detail-body {
+            padding: 16px 20px;
+        }
+
+        .detail-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .detail-row:last-child {
+            border-bottom: none;
+        }
+
+        .detail-label {
+            font-size: 14px;
+            color: var(--text-secondary);
+        }
+
+        .detail-value {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--text-primary);
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        /* Tab Content */
+        .tab-content {
+            display: none;
+            animation: fadeIn 0.3s ease;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* Loading & Error States */
+        .loading, .no-data {
+            text-align: center;
+            padding: 80px 20px;
+            color: var(--text-muted);
+            font-size: 16px;
+        }
+
+        .loading-spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid var(--border-color);
+            border-top-color: var(--accent-blue);
+            border-radius: 50%;
+            margin: 0 auto 16px;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .error {
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            color: var(--accent-red);
+            padding: 20px;
+
+        /* Collapsible Sections */
+        .collapsible {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            margin-bottom: 24px;
+            overflow: hidden;
+        }
+
+        .collapsible-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 16px 24px;
+            cursor: pointer;
+            transition: background 0.2s ease;
+            user-select: none;
+        }
+
+        .collapsible-header:hover {
+            background: var(--bg-hover);
+        }
+
+        .collapsible-title {
+            font-size: 15px;
+            font-weight: 600;
+            color: var(--text-primary);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .collapsible-title .icon {
+            font-size: 16px;
+        }
+
+        .collapsible-toggle {
+            width: 24px;
+            height: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--text-muted);
+            transition: transform 0.3s ease;
+        }
+
+        .collapsible.collapsed .collapsible-toggle {
+            transform: rotate(-90deg);
+        }
+
+        .collapsible-content {
+            padding: 0 24px 24px 24px;
+            transition: all 0.3s ease;
+        }
+
+        .collapsible.collapsed .collapsible-content {
+            display: none;
+        }
+
+        /* Dataset Statistics Section */
+        .dataset-stats-section {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 24px;
+            margin-bottom: 32px;
+        }
+
+        .dataset-stats-title {
+            font-size: 18px;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .dataset-stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 20px;
+        }
+
+        .stats-card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 20px;
+        }
+
+        .stats-card-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 16px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .stats-list {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .stats-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .stats-item-label {
+            font-size: 14px;
+            color: var(--text-secondary);
+        }
+
+        .stats-item-value {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--text-primary);
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .stats-item-value.highlight {
+            color: var(--accent-blue);
+            font-size: 18px;
+        }
+
+        .category-bar {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 8px 0;
+        }
+
+        .category-bar-label {
+            font-size: 13px;
+            color: var(--text-secondary);
+            min-width: 140px;
+        }
+
+        .category-bar-track {
+            flex: 1;
+            height: 8px;
+            background: var(--bg-primary);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .category-bar-fill {
+            height: 100%;
+            border-radius: 4px;
+            transition: width 0.5s ease;
+        }
+
+        .category-bar-value {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-primary);
+            font-family: 'JetBrains Mono', monospace;
+            min-width: 80px;
+            text-align: right;
+            border-radius: 12px;
+            margin-bottom: 24px;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .container {
+                padding: 24px 16px;
+            }
+            
+            .tabs {
+                width: 100%;
+                flex-direction: column;
+            }
+            
+            .tab {
+                text-align: center;
+            }
+            
+            .chart-container {
+                height: 300px;
+            }
+            
+            .stats-grid {
+                grid-template-columns: 1fr 1fr;
+            }
+        }
+
+        /* Run History */
+        .history-section {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 32px;
+            margin-bottom: 32px;
+        }
+
+        .history-title {
+            font-size: 18px;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 20px;
+        }
+
+        .history-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .history-table th,
+        .history-table td {
+            padding: 12px 16px;
+            text-align: left;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .history-table th {
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .history-table td {
+            font-size: 14px;
+            color: var(--text-primary);
+        }
+
+        .history-table tr:hover td {
+            background: var(--bg-hover);
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 4px 8px;
+            font-size: 12px;
+            font-weight: 500;
+            border-radius: 4px;
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .badge-formal {
+            background: rgba(16, 185, 129, 0.2);
+            color: var(--accent-green);
+        }
+
+        .badge-test {
+            background: rgba(100, 116, 139, 0.2);
+            color: var(--text-muted);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <div class="logo">
+                <div class="logo-icon">📊</div>
+                <span class="logo-text">MemoryBench</span>
+            </div>
+            <p class="subtitle">Comparative Performance Analysis Across Memory Providers</p>
+        </header>
+
+        <!-- Benchmark Tabs -->
+        <div class="tabs-container">
+            <div class="tabs" id="benchmark-tabs">
+                <!-- Populated dynamically -->
+            </div>
+        </div>
+
+        <!-- Loading State -->
+        <div id="loading" class="loading">
+            <div class="loading-spinner"></div>
+            Loading benchmark data...
+        </div>
+
+        <!-- Error State -->
+        <div id="error" class="error" style="display: none;"></div>
+
+        <!-- NoLiMa Tab -->
+        <div id="nolima-content" class="tab-content">
+            <!-- Provider Controls -->
+            <div class="collapsible" data-section="nolima-controls">
+                <div class="collapsible-header" onclick="toggleCollapsible(this)">
+                    <span class="collapsible-title"><span class="icon">⚙️</span> Provider Controls</span>
+                    <span class="collapsible-toggle">▼</span>
+                </div>
+                <div class="collapsible-content">
+                    <div class="controls-header" style="margin-bottom: 16px;">
+                        <label class="formal-toggle">
+                            <input type="checkbox" id="nolima-formal-only" checked>
+                            Formal runs only
+                        </label>
+                    </div>
+                    <div id="nolima-providers" class="provider-toggles"></div>
+                </div>
+            </div>
+
+            <!-- Stats -->
+            <div class="collapsible" data-section="nolima-stats-section">
+                <div class="collapsible-header" onclick="toggleCollapsible(this)">
+                    <span class="collapsible-title"><span class="icon">📊</span> Overview Stats</span>
+                    <span class="collapsible-toggle">▼</span>
+                </div>
+                <div class="collapsible-content">
+                    <div id="nolima-stats" class="stats-grid" style="margin-bottom: 0;"></div>
+                </div>
+            </div>
+
+            <!-- Main Chart -->
+            <div class="collapsible" data-section="nolima-chart-section">
+                <div class="collapsible-header" onclick="toggleCollapsible(this)">
+                    <span class="collapsible-title"><span class="icon">📈</span> Accuracy by Context Length</span>
+                    <span class="collapsible-toggle">▼</span>
+                </div>
+                <div class="collapsible-content">
+                    <div class="chart-container">
+                        <canvas id="nolima-chart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Dataset Statistics -->
+            <div class="collapsible collapsed" data-section="nolima-dataset-stats" id="nolima-dataset-stats">
+                <div class="collapsible-header" onclick="toggleCollapsible(this)">
+                    <span class="collapsible-title"><span class="icon">📋</span> Dataset Statistics</span>
+                    <span class="collapsible-toggle">▼</span>
+                </div>
+                <div class="collapsible-content">
+                    <div class="dataset-stats-grid">
+                        <!-- Populated dynamically -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Provider Details -->
+            <div class="collapsible collapsed" data-section="nolima-details" id="nolima-details">
+                <div class="collapsible-header" onclick="toggleCollapsible(this)">
+                    <span class="collapsible-title"><span class="icon">🔍</span> Provider Details</span>
+                    <span class="collapsible-toggle">▼</span>
+                </div>
+                <div class="collapsible-content">
+                    <div class="provider-details"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- LongMemEval Tab -->
+        <div id="longmemeval-content" class="tab-content">
+            <!-- Provider Controls -->
+            <div class="collapsible" data-section="longmemeval-controls">
+                <div class="collapsible-header" onclick="toggleCollapsible(this)">
+                    <span class="collapsible-title"><span class="icon">⚙️</span> Provider Controls</span>
+                    <span class="collapsible-toggle">▼</span>
+                </div>
+                <div class="collapsible-content">
+                    <div class="controls-header" style="margin-bottom: 16px;">
+                        <label class="formal-toggle">
+                            <input type="checkbox" id="longmemeval-formal-only" checked>
+                            Formal runs only
+                        </label>
+                </div>
+                    <div id="longmemeval-providers" class="provider-toggles"></div>
+                </div>
+            </div>
+
+            <!-- Stats -->
+            <div class="collapsible" data-section="longmemeval-stats-section">
+                <div class="collapsible-header" onclick="toggleCollapsible(this)">
+                    <span class="collapsible-title"><span class="icon">📊</span> Overview Stats</span>
+                    <span class="collapsible-toggle">▼</span>
+                </div>
+                <div class="collapsible-content">
+                    <div id="longmemeval-stats" class="stats-grid" style="margin-bottom: 0;"></div>
+                </div>
+            </div>
+
+            <!-- Main Chart -->
+            <div class="collapsible" data-section="longmemeval-chart-section">
+                <div class="collapsible-header" onclick="toggleCollapsible(this)">
+                    <span class="collapsible-title"><span class="icon">📈</span> Accuracy by Question Type</span>
+                    <span class="collapsible-toggle">▼</span>
+                </div>
+                <div class="collapsible-content">
+                    <div class="chart-container">
+                        <canvas id="longmemeval-chart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Dataset Statistics -->
+            <div class="collapsible collapsed" data-section="longmemeval-dataset-stats" id="longmemeval-dataset-stats">
+                <div class="collapsible-header" onclick="toggleCollapsible(this)">
+                    <span class="collapsible-title"><span class="icon">📋</span> Dataset Statistics</span>
+                    <span class="collapsible-toggle">▼</span>
+                </div>
+                <div class="collapsible-content">
+                    <div class="dataset-stats-grid">
+                        <!-- Populated dynamically -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Provider Details -->
+            <div class="collapsible collapsed" data-section="longmemeval-details" id="longmemeval-details">
+                <div class="collapsible-header" onclick="toggleCollapsible(this)">
+                    <span class="collapsible-title"><span class="icon">🔍</span> Provider Details</span>
+                    <span class="collapsible-toggle">▼</span>
+                </div>
+                <div class="collapsible-content">
+                    <div class="provider-details"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- LoCoMo Tab -->
+        <div id="locomo-content" class="tab-content">
+            <!-- Provider Controls -->
+            <div class="collapsible" data-section="locomo-controls">
+                <div class="collapsible-header" onclick="toggleCollapsible(this)">
+                    <span class="collapsible-title"><span class="icon">⚙️</span> Provider Controls</span>
+                    <span class="collapsible-toggle">▼</span>
+                </div>
+                <div class="collapsible-content">
+                    <div class="controls-header" style="margin-bottom: 16px;">
+                        <label class="formal-toggle">
+                            <input type="checkbox" id="locomo-formal-only" checked>
+                            Formal runs only
+                        </label>
+                    </div>
+                    <div id="locomo-providers" class="provider-toggles"></div>
+                </div>
+            </div>
+
+            <!-- Stats -->
+            <div class="collapsible" data-section="locomo-stats-section">
+                <div class="collapsible-header" onclick="toggleCollapsible(this)">
+                    <span class="collapsible-title"><span class="icon">📊</span> Overview Stats</span>
+                    <span class="collapsible-toggle">▼</span>
+                </div>
+                <div class="collapsible-content">
+                    <div id="locomo-stats" class="stats-grid" style="margin-bottom: 0;"></div>
+                </div>
+            </div>
+
+            <!-- Main Chart -->
+            <div class="collapsible" data-section="locomo-chart-section">
+                <div class="collapsible-header" onclick="toggleCollapsible(this)">
+                    <span class="collapsible-title"><span class="icon">📈</span> Accuracy by Category</span>
+                    <span class="collapsible-toggle">▼</span>
+                </div>
+                <div class="collapsible-content">
+                    <div class="chart-container">
+                        <canvas id="locomo-chart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Dataset Statistics - Moved below chart -->
+            <div class="collapsible collapsed" data-section="locomo-dataset-stats" id="locomo-dataset-stats">
+                <div class="collapsible-header" onclick="toggleCollapsible(this)">
+                    <span class="collapsible-title"><span class="icon">📋</span> Dataset Statistics</span>
+                    <span class="collapsible-toggle">▼</span>
+                </div>
+                <div class="collapsible-content">
+                    <div class="dataset-stats-grid">
+                        <!-- Populated dynamically -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Category Distribution -->
+            <div class="collapsible collapsed" data-section="locomo-distribution">
+                <div class="collapsible-header" onclick="toggleCollapsible(this)">
+                    <span class="collapsible-title"><span class="icon">🎯</span> Question Distribution</span>
+                    <span class="collapsible-toggle">▼</span>
+                </div>
+                <div class="collapsible-content">
+                    <div id="locomo-category-distribution"></div>
+                </div>
+            </div>
+
+            <!-- Provider Details -->
+            <div class="collapsible collapsed" data-section="locomo-details" id="locomo-details">
+                <div class="collapsible-header" onclick="toggleCollapsible(this)">
+                    <span class="collapsible-title"><span class="icon">🔍</span> Provider Details</span>
+                    <span class="collapsible-toggle">▼</span>
+                </div>
+                <div class="collapsible-content">
+                    <div class="provider-details"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- No Data State -->
+        <div id="no-data" class="no-data" style="display: none;">
+            <p>No benchmark results found.</p>
+            <p style="margin-top: 8px; font-size: 14px;">Run some benchmarks with the <code>--formal</code> flag to see results here.</p>
+        </div>
+    </div>
+
+    <script>
+        // ============================================================================
+        // State
+        // ============================================================================
+        
+        let config = {};
+        let allData = null;
+        let charts = {};
+        let activeTab = 'nolima';
+        let selectedProviders = {
+            nolima: new Set(),
+            longmemeval: new Set(),
+            locomo: new Set(),
+        };
+
+        const PROVIDER_COLORS = {
+            supermemory: '#3B82F6',
+            zep: '#F97316',
+            mem0: '#FBBF24',
+            fullcontext: '#8B5CF6',
+            langchain: '#10B981',
+        };
+
+        // ============================================================================
+        // Collapsible Sections
+        // ============================================================================
+
+        function toggleCollapsible(headerElement) {
+            const section = headerElement.parentElement;
+            section.classList.toggle('collapsed');
+            
+            // Save state to localStorage
+            const sectionId = section.dataset.section;
+            if (sectionId) {
+                const collapsed = section.classList.contains('collapsed');
+                localStorage.setItem(`collapse-${sectionId}`, collapsed);
+            }
+        }
+
+        function restoreCollapsibleStates() {
+            document.querySelectorAll('.collapsible[data-section]').forEach(section => {
+                const sectionId = section.dataset.section;
+                const saved = localStorage.getItem(`collapse-${sectionId}`);
+                if (saved === 'true') {
+                    section.classList.add('collapsed');
+                } else if (saved === 'false') {
+                    section.classList.remove('collapsed');
+                }
+            });
+        }
+
+        // ============================================================================
+        // Initialization
+        // ============================================================================
+
+        async function init() {
+            try {
+                // Load config
+                const configRes = await fetch('/api/config');
+                config = await configRes.json();
+                Object.assign(PROVIDER_COLORS, config.providerColors || {});
+
+                // Load data
+                await loadData();
+                
+                // Setup tabs
+                setupTabs();
+                
+                // Restore collapsible states
+                restoreCollapsibleStates();
+                
+                // Hide loading
+                document.getElementById('loading').style.display = 'none';
+                
+            } catch (error) {
+                console.error('Init error:', error);
+                document.getElementById('loading').style.display = 'none';
+                showError('Failed to load benchmark data: ' + error.message);
+            }
+        }
+
+        let datasetStats = null;
+
+        async function loadData() {
+            const formalOnly = true;
+            const [aggregatedRes, statsRes] = await Promise.all([
+                fetch(`/api/aggregated?formalOnly=${formalOnly}`),
+                fetch('/api/dataset-stats'),
+            ]);
+            
+            allData = await aggregatedRes.json();
+            datasetStats = await statsRes.json();
+            
+            if (!allData.benchmarks || allData.benchmarks.length === 0) {
+                document.getElementById('no-data').style.display = 'block';
+                return;
+            }
+
+            // Initialize selected providers (all on by default)
+            allData.noLiMa.forEach(r => selectedProviders.nolima.add(r.provider));
+            allData.longMemEval.forEach(r => selectedProviders.longmemeval.add(r.provider));
+            allData.loCoMo.forEach(r => selectedProviders.locomo.add(r.provider));
+
+            renderAll();
+        }
+
+        function showError(message) {
+            const errorEl = document.getElementById('error');
+            errorEl.textContent = message;
+            errorEl.style.display = 'block';
+        }
+
+        // ============================================================================
+        // Tabs
+        // ============================================================================
+
+        function setupTabs() {
+            const tabsContainer = document.getElementById('benchmark-tabs');
+            const benchmarks = [
+                { id: 'nolima', label: 'NoLiMa' },
+                { id: 'longmemeval', label: 'LongMemEval' },
+                { id: 'locomo', label: 'LoCoMo' },
+            ];
+
+            tabsContainer.innerHTML = benchmarks.map(b => `
+                <button class="tab ${b.id === activeTab ? 'active' : ''}" data-tab="${b.id}">
+                    ${b.label}
+                </button>
+            `).join('');
+
+            // Add click handlers
+            tabsContainer.querySelectorAll('.tab').forEach(tab => {
+                tab.addEventListener('click', () => {
+                    setActiveTab(tab.dataset.tab);
+                });
+            });
+
+            // Show initial tab
+            setActiveTab(activeTab);
+        }
+
+        function setActiveTab(tabId) {
+            activeTab = tabId;
+            
+            // Update tab buttons
+            document.querySelectorAll('.tab').forEach(tab => {
+                tab.classList.toggle('active', tab.dataset.tab === tabId);
+            });
+
+            // Update content visibility
+            document.querySelectorAll('.tab-content').forEach(content => {
+                content.classList.toggle('active', content.id === `${tabId}-content`);
+            });
+        }
+
+        // ============================================================================
+        // Rendering
+        // ============================================================================
+
+        function renderAll() {
+            renderDatasetStats();
+            renderNoLiMa();
+            renderLongMemEval();
+            renderLoCoMo();
+        }
+
+        // ============================================================================
+        // Dataset Statistics
+        // ============================================================================
+
+        function renderDatasetStats() {
+            if (!datasetStats) return;
+            
+            // NoLiMa Dataset Stats
+            if (datasetStats.nolima) {
+                const stats = datasetStats.nolima;
+                const container = document.querySelector('#nolima-dataset-stats .dataset-stats-grid');
+                if (container) {
+                    const lengthColors = ['#3B82F6', '#8B5CF6', '#10B981', '#F97316', '#EF4444'];
+                    
+                    container.innerHTML = `
+                        <div class="stats-card" style="text-align: center;">
+                            <div style="font-size: 48px; font-weight: 700; color: var(--accent-blue);">${stats.totalTests}</div>
+                            <div style="font-size: 13px; color: var(--text-muted); margin-top: 4px;">Total Test Cases</div>
+                            <div style="margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border-color);">
+                                <span style="font-weight: 600; color: var(--text-primary);">${stats.testsPerLength}</span>
+                                <span style="font-size: 11px; color: var(--text-muted); margin-left: 4px;">per context length</span>
+                            </div>
+                        </div>
+                        
+                        <div class="stats-card" style="text-align: center;">
+                            <div style="font-size: 48px; font-weight: 700; color: var(--accent-purple);">${stats.contextLengths.length}</div>
+                            <div style="font-size: 13px; color: var(--text-muted); margin-top: 4px;">Context Lengths</div>
+                            <div style="display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border-color);">
+                                ${stats.contextLengths.map((len, i) => `
+                                    <div style="padding: 6px 12px; background: ${lengthColors[i]}20; border-radius: 6px; border: 1px solid ${lengthColors[i]}40;">
+                                        <span style="font-weight: 600; color: ${lengthColors[i]};">${len}</span>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
+                        
+                        <div class="stats-card" style="text-align: center;">
+                            <div style="font-size: 48px; font-weight: 700; color: var(--accent-green);">32K</div>
+                            <div style="font-size: 13px; color: var(--text-muted); margin-top: 4px;">Max Context</div>
+                            <div style="margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border-color);">
+                                <span style="font-size: 11px; color: var(--text-muted);">Tests memory retrieval at scale</span>
+                            </div>
+                        </div>
+                    `;
+                }
+            }
+            
+            // LongMemEval Dataset Stats
+            if (datasetStats.longmemeval) {
+                const stats = datasetStats.longmemeval;
+                const container = document.querySelector('#longmemeval-dataset-stats .dataset-stats-grid');
+                if (container) {
+                    const typeColors = {
+                        'single-session-user': '#3B82F6',
+                        'single-session-assistant': '#8B5CF6',
+                        'single-session-preference': '#06B6D4',
+                        'knowledge-update': '#10B981',
+                        'temporal-reasoning': '#F97316',
+                        'multi-session': '#EF4444',
+                    };
+                    
+                    container.innerHTML = `
+                        <div class="stats-card" style="text-align: center;">
+                            <div style="font-size: 48px; font-weight: 700; color: var(--accent-blue);">${stats.totalQuestions}</div>
+                            <div style="font-size: 13px; color: var(--text-muted); margin-top: 4px;">Total Questions</div>
+                            <div style="margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border-color);">
+                                <span style="font-weight: 600; color: var(--text-primary);">${stats.questionTypes.length}</span>
+                                <span style="font-size: 11px; color: var(--text-muted); margin-left: 4px;">question types</span>
+                            </div>
+                        </div>
+                        
+                        <div class="stats-card" style="text-align: center; grid-column: span 2;">
+                            <div style="font-size: 18px; font-weight: 600; color: var(--text-primary); margin-bottom: 16px;">Question Distribution</div>
+                            <div style="display: flex; flex-wrap: wrap; justify-content: center; gap: 8px;">
+                                ${stats.questionTypes.map(qt => `
+                                    <div style="padding: 8px 14px; background: ${typeColors[qt.type]}20; border-radius: 6px; border: 1px solid ${typeColors[qt.type]}40;">
+                                        <span style="font-weight: 600; color: ${typeColors[qt.type]};">${qt.count}</span>
+                                        <span style="font-size: 11px; color: var(--text-muted); margin-left: 6px;">${qt.label.replace('Single-Session ', 'SS ')}</span>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
+                    `;
+                }
+            }
+            
+            // LoCoMo Dataset Stats - Compact visual cards only
+            if (datasetStats.locomo) {
+                const stats = datasetStats.locomo;
+                const container = document.querySelector('#locomo-dataset-stats .dataset-stats-grid');
+                
+                // Category colors matching paper
+                const categoryColors = {
+                    1: '#8B5CF6',  // Multi-hop - Purple
+                    2: '#3B82F6',  // Temporal - Blue
+                    3: '#10B981',  // Open Domain - Green
+                    4: '#F97316',  // Single-hop - Orange
+                    5: '#EF4444',  // Adversarial - Red
+                };
+                
+                // Compact stats cards - no text labels, just visual
+                container.innerHTML = `
+                    <div class="stats-card" style="text-align: center;">
+                        <div style="font-size: 48px; font-weight: 700; color: var(--accent-blue);">${stats.conversations.total}</div>
+                        <div style="font-size: 13px; color: var(--text-muted); margin-top: 4px;">Conversations</div>
+                        <div style="display: flex; justify-content: center; gap: 24px; margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border-color);">
+                            <div><span style="font-weight: 600; color: var(--text-primary);">${stats.conversations.avgSessions}</span><br><span style="font-size: 11px; color: var(--text-muted);">Sessions</span></div>
+                            <div><span style="font-weight: 600; color: var(--text-primary);">${stats.conversations.avgTurns}</span><br><span style="font-size: 11px; color: var(--text-muted);">Turns/Session</span></div>
+                            <div><span style="font-weight: 600; color: var(--text-primary);">${(stats.conversations.avgTokens/1000).toFixed(1)}K</span><br><span style="font-size: 11px; color: var(--text-muted);">Tokens</span></div>
+                        </div>
+                    </div>
+                    
+                    <div class="stats-card" style="text-align: center;">
+                        <div style="font-size: 48px; font-weight: 700; color: var(--accent-blue);">${stats.questions.total.toLocaleString()}</div>
+                        <div style="font-size: 13px; color: var(--text-muted); margin-top: 4px;">Questions</div>
+                        <div style="display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border-color);">
+                            ${stats.questions.byCategory.map(cat => `
+                                <div style="padding: 6px 12px; background: ${categoryColors[cat.category]}20; border-radius: 6px; border: 1px solid ${categoryColors[cat.category]}40;">
+                                    <span style="font-weight: 600; color: ${categoryColors[cat.category]};">${cat.count}</span>
+                                    <span style="font-size: 11px; color: var(--text-muted); margin-left: 4px;">${cat.name.split(' ')[0]}</span>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                    
+                    <div class="stats-card" style="text-align: center;">
+                        <div style="font-size: 48px; font-weight: 700; color: var(--accent-purple);">${stats.multimodal.totalImages}</div>
+                        <div style="font-size: 13px; color: var(--text-muted); margin-top: 4px;">Images</div>
+                        <div style="margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border-color);">
+                            <span style="font-weight: 600; color: var(--text-primary);">${stats.multimodal.avgImages}</span>
+                            <span style="font-size: 11px; color: var(--text-muted); margin-left: 4px;">per conversation</span>
+                        </div>
+                    </div>
+                `;
+                
+                // Also populate the distribution section
+                const distContainer = document.getElementById('locomo-category-distribution');
+                if (distContainer) {
+                    distContainer.innerHTML = `
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; padding: 20px 0;">
+                            ${stats.questions.byCategory.map(cat => `
+                                <div style="text-align: center; padding: 20px; background: var(--bg-secondary); border-radius: 12px; border: 1px solid var(--border-color);">
+                                    <div style="font-size: 32px; font-weight: 700; color: ${categoryColors[cat.category] || '#6B7280'}; font-family: 'JetBrains Mono', monospace;">
+                                        ${cat.count}
+                                    </div>
+                                    <div style="font-size: 12px; color: var(--text-muted); margin-top: 8px; text-transform: uppercase; letter-spacing: 0.5px;">
+                                        ${cat.name}
+                                    </div>
+                                    <div style="font-size: 14px; color: var(--text-secondary); margin-top: 4px;">
+                                        ${cat.percentage}%
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    `;
+                }
+            }
+        }
+
+        function renderNoLiMa() {
+            const data = allData.noLiMa;
+            if (data.length === 0) return;
+
+            // Render provider toggles
+            renderProviderToggles('nolima', data);
+            
+            // Render stats
+            renderStats('nolima', data);
+            
+            // Render chart
+            renderNoLiMaChart(data);
+            
+            // Render details
+            renderNoLiMaDetails(data);
+        }
+
+        function renderLongMemEval() {
+            const data = allData.longMemEval;
+            if (data.length === 0) return;
+
+            renderProviderToggles('longmemeval', data);
+            renderStats('longmemeval', data);
+            renderLongMemEvalChart(data);
+            renderLongMemEvalDetails(data);
+        }
+
+        function renderLoCoMo() {
+            const data = allData.loCoMo;
+            if (data.length === 0) return;
+
+            renderProviderToggles('locomo', data);
+            renderStats('locomo', data);
+            renderLoCoMoChart(data);
+            renderLoCoMoDetails(data);
+        }
+
+        function renderProviderToggles(benchmark, data) {
+            const container = document.getElementById(`${benchmark}-providers`);
+            const providers = [...new Set(data.map(r => r.provider))];
+            
+            container.innerHTML = providers.map(provider => {
+                const isActive = selectedProviders[benchmark].has(provider);
+                const color = PROVIDER_COLORS[provider] || '#6B7280';
+                return `
+                    <label class="provider-toggle ${isActive ? 'active' : ''}" data-provider="${provider}">
+                        <input type="checkbox" ${isActive ? 'checked' : ''}>
+                        <span class="provider-color" style="background: ${color}"></span>
+                        <span class="provider-name">${provider}</span>
+                    </label>
+                `;
+            }).join('');
+
+            // Add change handlers
+            container.querySelectorAll('.provider-toggle').forEach(toggle => {
+                toggle.addEventListener('click', (e) => {
+                    const provider = toggle.dataset.provider;
+                    const checkbox = toggle.querySelector('input');
+                    
+                    if (e.target !== checkbox) {
+                        checkbox.checked = !checkbox.checked;
+                    }
+                    
+                    toggle.classList.toggle('active', checkbox.checked);
+                    
+                    if (checkbox.checked) {
+                        selectedProviders[benchmark].add(provider);
+                    } else {
+                        selectedProviders[benchmark].delete(provider);
+                    }
+                    
+                    // Re-render chart, stats, and details
+                    if (benchmark === 'nolima') {
+                        renderNoLiMaChart(allData.noLiMa);
+                        renderStats('nolima', allData.noLiMa);
+                        renderNoLiMaDetails(allData.noLiMa);
+                    } else if (benchmark === 'longmemeval') {
+                        renderLongMemEvalChart(allData.longMemEval);
+                        renderStats('longmemeval', allData.longMemEval);
+                        renderLongMemEvalDetails(allData.longMemEval);
+                    } else if (benchmark === 'locomo') {
+                        renderLoCoMoChart(allData.loCoMo);
+                        renderStats('locomo', allData.loCoMo);
+                        renderLoCoMoDetails(allData.loCoMo);
+                    }
+                });
+            });
+        }
+
+        function renderStats(benchmark, data) {
+            const container = document.getElementById(`${benchmark}-stats`);
+            const filteredData = data.filter(r => selectedProviders[benchmark].has(r.provider));
+            
+            if (filteredData.length === 0) {
+                container.innerHTML = '';
+                return;
+            }
+
+            // Find best accuracy
+            const bestAccuracy = Math.max(...filteredData.map(r => r.accuracy));
+            const bestProvider = filteredData.find(r => r.accuracy === bestAccuracy);
+            
+            // Total questions
+            const totalQuestions = filteredData.reduce((sum, r) => sum + (r.totalTests || r.totalQuestions || 0), 0);
+            
+            container.innerHTML = `
+                <div class="stat-card">
+                    <div class="stat-label">Best Accuracy</div>
+                    <div class="stat-value highlight">${bestAccuracy.toFixed(1)}<span class="stat-suffix">%</span></div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Top Provider</div>
+                    <div class="stat-value">${bestProvider?.provider || '-'}</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Providers Compared</div>
+                    <div class="stat-value">${filteredData.length}</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Total Questions</div>
+                    <div class="stat-value">${totalQuestions.toLocaleString()}</div>
+                </div>
+            `;
+        }
+
+        // ============================================================================
+        // Charts
+        // ============================================================================
+
+        function renderNoLiMaChart(data) {
+            const ctx = document.getElementById('nolima-chart');
+            const filteredData = data.filter(r => selectedProviders.nolima.has(r.provider));
+            
+            if (charts.nolima) charts.nolima.destroy();
+            
+            // Handle no data case
+            if (filteredData.length === 0) {
+                charts.nolima = new Chart(ctx, {
+                    type: 'bar',
+                    data: { labels: [], datasets: [] },
+                    options: getChartOptions('Accuracy (%)', [])
+                });
+                return;
+            }
+            
+            // Context lengths as labels
+            const labels = ['1K', '4K', '8K', '16K', '32K'];
+            
+            const datasets = filteredData.map(run => ({
+                label: run.provider,
+                data: labels.map(len => {
+                    const ctxData = run.byContextLength?.find(c => c.contextLength === len);
+                    return ctxData ? ctxData.accuracy : 0;
+                }),
+                backgroundColor: PROVIDER_COLORS[run.provider] || '#6B7280',
+                borderColor: PROVIDER_COLORS[run.provider] || '#6B7280',
+                borderWidth: 0,
+                borderRadius: 4,
+            }));
+
+            charts.nolima = new Chart(ctx, {
+                type: 'bar',
+                data: { labels, datasets },
+                options: getChartOptions('Accuracy (%)', datasets)
+            });
+        }
+
+        function renderLongMemEvalChart(data) {
+            const ctx = document.getElementById('longmemeval-chart');
+            const filteredData = data.filter(r => selectedProviders.longmemeval.has(r.provider));
+            
+            if (charts.longmemeval) charts.longmemeval.destroy();
+            
+            // Handle no data case
+            if (filteredData.length === 0) {
+                charts.longmemeval = new Chart(ctx, {
+                    type: 'bar',
+                    data: { labels: [], datasets: [] },
+                    options: getChartOptions('Accuracy (%)', [])
+                });
+                return;
+            }
+            
+            const labelMap = config.longMemEvalLabels || {
+                'single-session-user': 'Single-Session User',
+                'single-session-assistant': 'Single-Session Assistant',
+                'single-session-preference': 'Single-Session Preference',
+                'knowledge-update': 'Knowledge Update',
+                'temporal-reasoning': 'Temporal Reasoning',
+                'multi-session': 'Multi-Session',
+            };
+            
+            const questionTypes = Object.keys(labelMap);
+            const labels = questionTypes.map(qt => labelMap[qt]);
+            
+            const datasets = filteredData.map(run => ({
+                label: run.provider,
+                data: questionTypes.map(qt => {
+                    const qtype = run.byQuestionType?.find(q => q.questionType === qt);
+                    return qtype ? qtype.accuracy : 0;
+                }),
+                backgroundColor: PROVIDER_COLORS[run.provider] || '#6B7280',
+                borderColor: PROVIDER_COLORS[run.provider] || '#6B7280',
+                borderWidth: 0,
+                borderRadius: 4,
+            }));
+
+            charts.longmemeval = new Chart(ctx, {
+                type: 'bar',
+                data: { labels, datasets },
+                options: getChartOptions('Accuracy (%)', datasets)
+            });
+        }
+
+        function renderLoCoMoChart(data) {
+            const ctx = document.getElementById('locomo-chart');
+            const filteredData = data.filter(r => selectedProviders.locomo.has(r.provider));
+            
+            if (charts.locomo) charts.locomo.destroy();
+            
+            // Handle no data case
+            if (filteredData.length === 0) {
+                charts.locomo = new Chart(ctx, {
+                    type: 'bar',
+                    data: { labels: [], datasets: [] },
+                    options: getChartOptions('Accuracy (%)', [])
+                });
+                return;
+            }
+            
+            const categoryLabels = {
+                1: 'Single-hop Factual',
+                2: 'Temporal Reasoning',
+                3: 'Multi-hop Reasoning',
+                4: 'Simple Factual',
+                5: 'Adversarial',
+            };
+            
+            const categories = [1, 2, 3, 4, 5];
+            const labels = categories.map(c => categoryLabels[c]);
+            
+            const datasets = filteredData.map(run => ({
+                label: run.provider,
+                data: categories.map(cat => {
+                    const category = run.byCategory?.find(c => c.category === cat);
+                    return category ? category.accuracy : 0;
+                }),
+                backgroundColor: PROVIDER_COLORS[run.provider] || '#6B7280',
+                borderColor: PROVIDER_COLORS[run.provider] || '#6B7280',
+                borderWidth: 0,
+                borderRadius: 4,
+            }));
+
+            charts.locomo = new Chart(ctx, {
+                type: 'bar',
+                data: { labels, datasets },
+                options: getChartOptions('Accuracy (%)', datasets)
+            });
+        }
+
+        function getChartOptions(yAxisLabel, datasets = []) {
+            // Calculate dynamic Y-axis based on data
+            let allValues = [];
+            datasets.forEach(ds => {
+                if (ds.data) allValues = allValues.concat(ds.data.filter(v => v > 0));
+            });
+            
+            // Set min to (lowest value - 10) floored to nearest 5, but not below 0
+            // Set max to (highest value + 5) ceiled to nearest 5, but not above 100
+            const minValue = allValues.length > 0 ? Math.min(...allValues) : 0;
+            const maxValue = allValues.length > 0 ? Math.max(...allValues) : 100;
+            
+            const yMin = Math.max(0, Math.floor((minValue - 10) / 5) * 5);
+            const yMax = Math.min(100, Math.ceil((maxValue + 5) / 5) * 5);
+            
+            return {
+                responsive: true,
+                maintainAspectRatio: false,
+                animation: {
+                    duration: 400,
+                    easing: 'easeOutQuart',
+                },
+                transitions: {
+                    active: {
+                        animation: {
+                            duration: 200
+                        }
+                    }
+                },
+                plugins: {
+                    legend: {
+                        display: true,
+                        position: 'top',
+                        labels: {
+                            color: '#94A3B8',
+                            font: { family: 'DM Sans', size: 13 },
+                            padding: 20,
+                            usePointStyle: true,
+                            pointStyle: 'rect',
+                        }
+                    },
+                    tooltip: {
+                        backgroundColor: '#1E2333',
+                        titleColor: '#F8FAFC',
+                        bodyColor: '#94A3B8',
+                        borderColor: '#252A3A',
+                        borderWidth: 1,
+                        padding: 12,
+                        cornerRadius: 8,
+                        titleFont: { family: 'DM Sans', weight: 600 },
+                        bodyFont: { family: 'JetBrains Mono' },
+                        callbacks: {
+                            label: (ctx) => `${ctx.dataset.label}: ${ctx.raw.toFixed(1)}%`
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        grid: {
+                            color: 'rgba(255,255,255,0.05)',
+                            drawBorder: false,
+                        },
+                        ticks: {
+                            color: '#64748B',
+                            font: { family: 'DM Sans', size: 12 },
+                            maxRotation: 45,
+                            minRotation: 45,
+                        }
+                    },
+                    y: {
+                        min: yMin,
+                        max: yMax,
+                        grid: {
+                            color: 'rgba(255,255,255,0.05)',
+                            drawBorder: false,
+                        },
+                        ticks: {
+                            color: '#64748B',
+                            font: { family: 'JetBrains Mono', size: 11 },
+                            callback: (value) => value + '%'
+                        },
+                        title: {
+                            display: true,
+                            text: yAxisLabel,
+                            color: '#64748B',
+                            font: { family: 'DM Sans', size: 12 }
+                        }
+                    }
+                },
+                interaction: {
+                    mode: 'index',
+                    intersect: false,
+                },
+            };
+        }
+
+        // ============================================================================
+        // Details
+        // ============================================================================
+
+        // Helper to render performance stats
+        function renderPerformanceStats(perf) {
+            if (!perf || !perf.avgSearchTimeMs) return '';
+            return `
+                <div class="detail-row" style="margin-top: 12px; padding-top: 12px; border-top: 1px dashed var(--border-color);">
+                    <span class="detail-label" style="color: var(--accent-cyan);">⚡ Avg Search Time</span>
+                    <span class="detail-value" style="color: var(--accent-cyan);">${perf.avgSearchTimeMs}ms</span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">Min / Max</span>
+                    <span class="detail-value">${perf.minSearchTimeMs}ms / ${perf.maxSearchTimeMs}ms</span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">Total Searches</span>
+                    <span class="detail-value">${perf.totalSearches}</span>
+                </div>
+            `;
+        }
+
+        function renderNoLiMaDetails(data) {
+            const container = document.querySelector('#nolima-details .provider-details');
+            const filteredData = data.filter(r => selectedProviders.nolima.has(r.provider));
+            
+            container.innerHTML = filteredData.map(run => `
+                <div class="provider-detail-card">
+                    <div class="provider-detail-header">
+                        <span class="provider-color" style="background: ${PROVIDER_COLORS[run.provider] || '#6B7280'}; width: 12px; height: 12px; border-radius: 3px;"></span>
+                        <span class="provider-detail-name">${run.provider}</span>
+                        <span class="provider-detail-meta">${run.runId}</span>
+                    </div>
+                    <div class="provider-detail-body">
+                        <div class="detail-row">
+                            <span class="detail-label">Overall Accuracy</span>
+                            <span class="detail-value">${run.accuracy.toFixed(2)}%</span>
+                        </div>
+                        <div class="detail-row">
+                            <span class="detail-label">Total Tests</span>
+                            <span class="detail-value">${run.totalTests}</span>
+                        </div>
+                        <div class="detail-row">
+                            <span class="detail-label">Correct Answers</span>
+                            <span class="detail-value">${run.correctAnswers}</span>
+                        </div>
+                        <div class="detail-row">
+                            <span class="detail-label">Answering Model</span>
+                            <span class="detail-value">${run.answeringModel}</span>
+                        </div>
+                        <div class="detail-row">
+                            <span class="detail-label">Judge Model</span>
+                            <span class="detail-value">${run.judgeModel || 'N/A'}</span>
+                        </div>
+                        ${renderPerformanceStats(run.performance)}
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function renderLongMemEvalDetails(data) {
+            const container = document.querySelector('#longmemeval-details .provider-details');
+            const filteredData = data.filter(r => selectedProviders.longmemeval.has(r.provider));
+            
+            container.innerHTML = filteredData.map(run => `
+                <div class="provider-detail-card">
+                    <div class="provider-detail-header">
+                        <span class="provider-color" style="background: ${PROVIDER_COLORS[run.provider] || '#6B7280'}; width: 12px; height: 12px; border-radius: 3px;"></span>
+                        <span class="provider-detail-name">${run.provider}</span>
+                        <span class="provider-detail-meta">${run.runId}</span>
+                    </div>
+                    <div class="provider-detail-body">
+                        <div class="detail-row">
+                            <span class="detail-label">Overall Accuracy</span>
+                            <span class="detail-value">${run.accuracy.toFixed(2)}%</span>
+                        </div>
+                        <div class="detail-row">
+                            <span class="detail-label">Total Questions</span>
+                            <span class="detail-value">${run.totalQuestions}</span>
+                        </div>
+                        <div class="detail-row">
+                            <span class="detail-label">Correct Answers</span>
+                            <span class="detail-value">${run.correctAnswers}</span>
+                        </div>
+                        <div class="detail-row">
+                            <span class="detail-label">Answering Model</span>
+                            <span class="detail-value">${run.answeringModel}</span>
+                        </div>
+                        <div class="detail-row">
+                            <span class="detail-label">Judge Model</span>
+                            <span class="detail-value">${run.judgeModel || 'N/A'}</span>
+                        </div>
+                        ${renderPerformanceStats(run.performance)}
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function renderLoCoMoDetails(data) {
+            const container = document.querySelector('#locomo-details .provider-details');
+            const filteredData = data.filter(r => selectedProviders.locomo.has(r.provider));
+            
+            container.innerHTML = filteredData.map(run => `
+                <div class="provider-detail-card">
+                    <div class="provider-detail-header">
+                        <span class="provider-color" style="background: ${PROVIDER_COLORS[run.provider] || '#6B7280'}; width: 12px; height: 12px; border-radius: 3px;"></span>
+                        <span class="provider-detail-name">${run.provider}</span>
+                        <span class="provider-detail-meta">${run.runId}</span>
+                    </div>
+                    <div class="provider-detail-body">
+                        <div class="detail-row">
+                            <span class="detail-label">Overall Accuracy</span>
+                            <span class="detail-value">${run.accuracy.toFixed(2)}%</span>
+                        </div>
+                        <div class="detail-row">
+                            <span class="detail-label">Total Questions</span>
+                            <span class="detail-value">${run.totalQuestions}</span>
+                        </div>
+                        <div class="detail-row">
+                            <span class="detail-label">Correct Answers</span>
+                            <span class="detail-value">${run.correctAnswers}</span>
+                        </div>
+                        <div class="detail-row">
+                            <span class="detail-label">Eval Method</span>
+                            <span class="detail-value">${run.evalMethod || 'llm'}</span>
+                        </div>
+                        <div class="detail-row">
+                            <span class="detail-label">Answering Model</span>
+                            <span class="detail-value">${run.answeringModel}</span>
+                        </div>
+                        ${renderPerformanceStats(run.performance)}
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // ============================================================================
+        // Start
+        // ============================================================================
+
+        document.addEventListener('DOMContentLoaded', init);
+    </script>
+</body>
+</html>
+

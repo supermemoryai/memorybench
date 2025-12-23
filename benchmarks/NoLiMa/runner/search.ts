@@ -80,10 +80,52 @@ export async function searchNoLiMa(
         }
 
         try {
-            // Use unified provider interface
+            // Use unified provider interface with timing
+            const searchStart = performance.now();
             const results = await provider.search(testCase.question, containerTag, { limit: topK });
-            const retrievedContext = results.map((r: any) => r.content).join('\n\n---\n\n');
-            const retrievedNeedle = retrievedContext.toLowerCase().includes(testCase.needle.toLowerCase());
+            const searchDurationMs = Math.round(performance.now() - searchStart);
+            
+            const retrievedContext = results.map((r: any) => r.content || '').filter(c => c).join('\n\n---\n\n');
+            
+            // Warn if no context was retrieved
+            if (!retrievedContext && results.length > 0) {
+                console.warn(`  ⚠ Warning: ${results.length} results returned but no content extracted. Check provider response format.`);
+            }
+            
+            // Check if needle is retrieved - use more lenient matching for memory providers
+            // that extract facts rather than storing raw text
+            const needleLower = testCase.needle.toLowerCase();
+            const contextLower = retrievedContext.toLowerCase();
+            
+            // Method 1: Exact substring match
+            let retrievedNeedle = contextLower.includes(needleLower);
+            
+            // Method 2: If exact match fails, check if key content words are present
+            // This handles cases where memory providers extract/rephrase facts
+            if (!retrievedNeedle) {
+                // Extract key content words (nouns, verbs) from needle, removing common words
+                const stopWords = new Set(['the', 'a', 'an', 'is', 'are', 'was', 'were', 'be', 'been', 'being', 
+                    'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could', 'should', 'may', 'might',
+                    'must', 'shall', 'can', 'to', 'of', 'in', 'for', 'on', 'with', 'at', 'by', 'from', 'as',
+                    'into', 'through', 'during', 'before', 'after', 'above', 'below', 'between', 'under', 'again',
+                    'further', 'then', 'once', 'here', 'there', 'when', 'where', 'why', 'how', 'all', 'each',
+                    'few', 'more', 'most', 'other', 'some', 'such', 'no', 'nor', 'not', 'only', 'own', 'same',
+                    'so', 'than', 'too', 'very', 'just', 'and', 'but', 'if', 'or', 'because', 'until', 'while',
+                    'that', 'which', 'who', 'whom', 'this', 'these', 'those', 'am', 'its', 'it', 'he', 'she',
+                    'they', 'them', 'his', 'her', 'their', 'what', 'actually', 'really', 'certainly']);
+                
+                const needleWords = needleLower
+                    .replace(/[^a-z0-9\s]/g, ' ')
+                    .split(/\s+/)
+                    .filter(w => w.length > 2 && !stopWords.has(w));
+                
+                // Require at least 70% of key words to be present in context
+                if (needleWords.length > 0) {
+                    const matchedWords = needleWords.filter(word => contextLower.includes(word));
+                    const matchRatio = matchedWords.length / needleWords.length;
+                    retrievedNeedle = matchRatio >= 0.7;
+                }
+            }
 
             const searchResult: SearchResult = {
                 testCaseId: testCase.testId,
@@ -92,7 +134,8 @@ export async function searchNoLiMa(
                 question: testCase.question,
                 retrievedContext,
                 retrievedNeedle,
-                timestamp: new Date().toISOString()
+                timestamp: new Date().toISOString(),
+                searchDurationMs,
             };
 
             checkpoint.searchResults.push(searchResult);
@@ -120,5 +163,14 @@ export async function searchNoLiMa(
     const needleRetrievalCount = checkpoint.searchResults.filter(r => r.retrievedNeedle).length;
     const retrievalRate = (needleRetrievalCount / checkpoint.searchResults.length * 100).toFixed(2);
     console.log(`  Needle retrieved: ${needleRetrievalCount}/${checkpoint.searchResults.length} (${retrievalRate}%)`);
+    
+    // Timing stats
+    const durations = checkpoint.searchResults.map(r => r.searchDurationMs).filter(d => d !== undefined) as number[];
+    if (durations.length > 0) {
+        const avgDuration = Math.round(durations.reduce((a, b) => a + b, 0) / durations.length);
+        const minDuration = Math.min(...durations);
+        const maxDuration = Math.max(...durations);
+        console.log(`  Avg search time: ${avgDuration}ms (min: ${minDuration}ms, max: ${maxDuration}ms)`);
+    }
     console.log('');
 }

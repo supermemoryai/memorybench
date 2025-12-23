@@ -18,10 +18,12 @@ interface SearchOptions {
 interface QuestionSearchResult {
     questionId: string;
     question: string;
-    answer: string | number;
+    answer?: string | number;           // Regular answer (categories 1-4)
+    adversarial_answer?: string;        // Wrong answer to avoid (category 5)
     category: number;
     retrievedContext: string;
     timestamp: string;
+    searchDurationMs?: number;          // API call duration in milliseconds
 }
 
 interface SampleSearchCheckpoint {
@@ -129,17 +131,29 @@ async function searchSingleSample(
         const questionId = `${sampleId}-q${i + 1}`;
 
         try {
-            // Search for relevant context using unified interface
+            // Search for relevant context using unified interface with timing
+            const searchStart = performance.now();
             const results = await provider.search(qa.question, containerTag, { limit: topK });
-            const retrievedContext = results.map((r: any) => r.content).join('\n\n---\n\n');
+            const searchDurationMs = Math.round(performance.now() - searchStart);
+            
+            const retrievedContext = results.map((r: any) => r.content || '').filter(c => c).join('\n\n---\n\n');
+            
+            // Warn if no context was retrieved
+            if (!retrievedContext && results.length > 0) {
+                console.warn(`  ⚠ Warning: ${results.length} results returned but no content extracted. Check provider response format.`);
+            }
 
             const searchResult: QuestionSearchResult = {
                 questionId,
                 question: qa.question,
-                answer: qa.answer,
+                // Category 5 has adversarial_answer (wrong answer to avoid), others have answer
+                ...(qa.category === 5 
+                    ? { adversarial_answer: qa.adversarial_answer }
+                    : { answer: qa.answer }),
                 category: qa.category,
                 retrievedContext,
-                timestamp: new Date().toISOString()
+                timestamp: new Date().toISOString(),
+                searchDurationMs,
             };
 
             checkpoint.questionsSearched.push(searchResult);
