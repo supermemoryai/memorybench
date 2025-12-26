@@ -20,7 +20,8 @@ A pluggable benchmarking framework for evaluating memory and context systems.
 ┌─────────────┐    ┌─────────────┐    ┌─────────────┐
 │  Benchmarks │    │  Providers  │    │   Judges    │
 │  (LoCoMo,   │    │ (Supermem,  │    │  (GPT-4o,   │
-│  LongMem..) │    │  Mem0, Zep) │    │  Claude..)  │
+│  LongMem..) │    │  Mem0, Zep, │    │  Claude..)  │
+│             │    │  LocalBM25) │    │             │
 └──────┬──────┘    └──────┬──────┘    └──────┬──────┘
        └──────────────────┼──────────────────┘
                          ▼
@@ -45,6 +46,8 @@ bun run src/index.ts run -p supermemory -b locomo
 
 ```bash
 # Providers (at least one)
+# Local provider (no keys required)
+# localbm25 requires no provider API keys
 SUPERMEMORY_API_KEY=
 MEM0_API_KEY=
 ZEP_API_KEY=
@@ -54,6 +57,8 @@ OPENAI_API_KEY=
 ANTHROPIC_API_KEY=
 GOOGLE_API_KEY=
 ```
+
+Note: `localbm25` runs offline and does not require any provider API keys.
 
 ## Commands
 
@@ -73,7 +78,7 @@ GOOGLE_API_KEY=
 ## Options
 
 ```
--p, --provider         Memory provider (supermemory, mem0, zep)
+-p, --provider         Memory provider (supermemory, mem0, zep, localbm25)
 -b, --benchmark        Benchmark (locomo, longmemeval, convomem)
 -j, --judge            Judge model (gpt-4o, sonnet-4, gemini-2.5-flash, etc.)
 -r, --run-id           Run identifier (auto-generated if omitted)
@@ -98,11 +103,14 @@ bun run src/index.ts run -r my-test
 # Limited questions
 bun run src/index.ts run -p supermemory -b locomo -l 10
 
+# Offline baseline provider (no provider API keys required)
+bun run src/index.ts run -p localbm25 -b convomem -j gpt-4o -l 10
+
 # Different models
 bun run src/index.ts run -p zep -b longmemeval -j sonnet-4 -m gemini-2.5-flash
 
 # Compare multiple providers
-bun run src/index.ts compare -p supermemory,mem0,zep -b locomo -s 5
+bun run src/index.ts compare -p localbm25,supermemory,mem0,zep -b locomo -s 5
 
 # Test single question
 bun run src/index.ts test -r my-test -q question_42

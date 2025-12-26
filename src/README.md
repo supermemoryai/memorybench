@@ -3,7 +3,7 @@
 ```
 src/
 ├── benchmarks/      # Benchmark adapters (LoCoMo, LongMemEval, ConvoMem)
-├── providers/       # Memory provider integrations (Supermemory, Mem0, Zep)
+├── providers/       # Memory provider integrations (Supermemory, Mem0, Zep, Local BM25)
 ├── judges/          # LLM-as-judge implementations (OpenAI, Anthropic, Google)
 ├── orchestrator/    # Pipeline execution and checkpointing
 │   └── phases/      # Individual phase runners (ingest, search, answer, evaluate)

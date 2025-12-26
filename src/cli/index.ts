@@ -66,10 +66,14 @@ Available providers for storing and retrieving memories:
   zep            Zep - Long-term memory for AI assistants
                  Requires: ZEP_API_KEY
 
+  localbm25      Local BM25 - Offline baseline provider (no API keys)
+                 Requires: none
+                 
 Usage:
   -p supermemory    Use Supermemory as the memory provider
   -p mem0           Use Mem0 as the memory provider
   -p zep            Use Zep as the memory provider
+  -p localbm25      Use Local BM25 as the memory provider
 `)
 }
 
