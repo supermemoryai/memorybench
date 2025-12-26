@@ -26,6 +26,8 @@ export function getProviderConfig(provider: string): { apiKey: string; baseUrl?:
             return { apiKey: config.mem0ApiKey }
         case "zep":
             return { apiKey: config.zepApiKey }
+        case "localbm25":
+            return { apiKey: "" }
         default:
             throw new Error(`Unknown provider: ${provider}`)
     }
