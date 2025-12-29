@@ -6,6 +6,8 @@ export interface Config {
     openaiApiKey: string
     anthropicApiKey: string
     googleApiKey: string
+    anamnesisWorkerUrl: string
+    anamnesisDb: string
 }
 
 export const config: Config = {
@@ -16,6 +18,8 @@ export const config: Config = {
     openaiApiKey: process.env.OPENAI_API_KEY || "",
     anthropicApiKey: process.env.ANTHROPIC_API_KEY || "",
     googleApiKey: process.env.GOOGLE_API_KEY || "",
+    anamnesisWorkerUrl: process.env.ANAMNESIS_WORKER_URL || "http://localhost:37777",
+    anamnesisDb: process.env.ANAMNESIS_DB || `${process.env.HOME}/.claude-mem/claude-mem.db`,
 }
 
 export function getProviderConfig(provider: string): { apiKey: string; baseUrl?: string } {
@@ -26,6 +30,9 @@ export function getProviderConfig(provider: string): { apiKey: string; baseUrl?:
             return { apiKey: config.mem0ApiKey }
         case "zep":
             return { apiKey: config.zepApiKey }
+        case "anamnesis":
+            // Anamnesis is local-only, no API key needed
+            return { apiKey: "local", baseUrl: config.anamnesisWorkerUrl }
         default:
             throw new Error(`Unknown provider: ${provider}`)
     }

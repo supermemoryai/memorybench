@@ -9,7 +9,6 @@
         "@ai-sdk/google": "^2.0.49",
         "@ai-sdk/openai": "^2.0.88",
         "@getzep/zep-cloud": "^3.13.0",
-        "@letta-ai/letta-client": "^1.6.1",
         "ai": "^5.0.115",
         "drizzle-orm": "^0.45.1",
         "mem0ai": "^2.1.38",
@@ -61,8 +60,6 @@
     "@jest/types": ["@jest/types@29.6.3", "", { "dependencies": { "@jest/schemas": "^29.6.3", "@types/istanbul-lib-coverage": "^2.0.0", "@types/istanbul-reports": "^3.0.0", "@types/node": "*", "@types/yargs": "^17.0.8", "chalk": "^4.0.0" } }, "sha512-u3UPsIilWKOM3F9CXtrG8LEJmNxwoCQC/XVj4IKYXvvpx7QIi/Kg1LI5uDmDpKlac62NUtX7eLjRh+jVZcLOzw=="],
 
     "@langchain/core": ["@langchain/core@0.3.79", "", { "dependencies": { "@cfworker/json-schema": "^4.0.2", "ansi-styles": "^5.0.0", "camelcase": "6", "decamelize": "1.2.0", "js-tiktoken": "^1.0.12", "langsmith": "^0.3.67", "mustache": "^4.2.0", "p-queue": "^6.6.2", "p-retry": "4", "uuid": "^10.0.0", "zod": "^3.25.32", "zod-to-json-schema": "^3.22.3" } }, "sha512-ZLAs5YMM5N2UXN3kExMglltJrKKoW7hs3KMZFlXUnD7a5DFKBYxPFMeXA4rT+uvTxuJRZPCYX0JKI5BhyAWx4A=="],
-
-    "@letta-ai/letta-client": ["@letta-ai/letta-client@1.6.1", "", {}, "sha512-kCRnEKpeTj3e1xqRd58xvoCp28p/wuJUptrIlJ8cT2GiYkrOESlKmp6lc3f246VusrowdGeB9hSXePXZgd7rAA=="],
 
     "@mistralai/mistralai": ["@mistralai/mistralai@1.11.0", "", { "dependencies": { "zod": "^3.20.0", "zod-to-json-schema": "^3.24.1" } }, "sha512-6/BVj2mcaggYbpMzNSxtqtM2Tv/Jb5845XFd2CMYFO+O5VBkX70iLjtkBBTI4JFhh1l9vTCIMYXBVOjLoBVHGQ=="],
 
