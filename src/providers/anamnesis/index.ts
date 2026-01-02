@@ -1,8 +1,64 @@
 import Database from "bun:sqlite"
+import { createOpenAI } from "@ai-sdk/openai"
+import { generateText } from "ai"
 import type { Provider, ProviderConfig, IngestOptions, IngestResult, SearchOptions } from "../../types/provider"
 import type { UnifiedSession } from "../../types/unified"
 import { logger } from "../../utils/logger"
+import { config } from "../../utils/config"
 import { ANAMNESIS_PROMPTS } from "./prompts"
+
+/**
+ * Extracted observation structure matching production claude-mem.
+ */
+interface ExtractedObservation {
+    title: string
+    subtitle: string
+    facts: string[]
+    narrative: string
+    type: string
+    concepts: string[]
+}
+
+/**
+ * Extraction prompt - matches production claude-mem XML format.
+ * Uses structured facts array to preserve specific details like dates.
+ */
+const EXTRACTION_PROMPT = `You are a memory extraction system. Extract key facts from this conversation using structured observations.
+
+CRITICAL: Preserve ALL specific details, especially:
+- EXACT DATES (e.g., "7 May 2023", "last Tuesday")
+- SPECIFIC TIMES (e.g., "at 2pm", "morning")
+- NUMBERS (ages, amounts, durations)
+- NAMES (people, places, organizations)
+
+Output XML observations in this exact format:
+
+<observations>
+<observation>
+  <type>fact</type>
+  <title>Brief title (5-7 words)</title>
+  <subtitle>One sentence context</subtitle>
+  <facts>
+    <fact>First specific fact with exact details</fact>
+    <fact>Second specific fact including any dates/numbers</fact>
+    <fact>Third fact preserving temporal information</fact>
+  </facts>
+  <narrative>2-3 sentence summary connecting the facts</narrative>
+  <concepts>
+    <concept>category-tag</concept>
+  </concepts>
+</observation>
+</observations>
+
+Focus on:
+- Life events and WHEN they occurred (exact dates if mentioned)
+- Personal preferences with specific details
+- Relationships and how people are connected
+- Activities and hobbies with timeframes
+- Health, work, and future plans
+
+Conversation to analyze:
+`
 
 /**
  * AnamnesisProvider - MemoryBench provider for Tim's claude-mem memory system.
@@ -22,10 +78,106 @@ export class AnamnesisProvider implements Provider {
     private workerUrl: string = ""
     private dbPath: string = ""
     private containerTags: Set<string> = new Set()
+    private extractionMode: boolean = false
 
-    async initialize(config: ProviderConfig): Promise<void> {
-        this.workerUrl = config.baseUrl || process.env.ANAMNESIS_WORKER_URL || "http://localhost:37777"
+
+    /**
+     * Parse XML observations from LLM response.
+     */
+    private parseXmlObservations(xml: string): ExtractedObservation[] {
+        const observations: ExtractedObservation[] = []
+        const obsMatches = xml.matchAll(/<observation>([\s\S]*?)<\/observation>/g)
+
+        for (const match of obsMatches) {
+            const obsXml = match[1]
+
+            const typeMatch = obsXml.match(/<type>([\s\S]*?)<\/type>/)
+            const titleMatch = obsXml.match(/<title>([\s\S]*?)<\/title>/)
+            const subtitleMatch = obsXml.match(/<subtitle>([\s\S]*?)<\/subtitle>/)
+            const narrativeMatch = obsXml.match(/<narrative>([\s\S]*?)<\/narrative>/)
+
+            // Extract facts array
+            const facts: string[] = []
+            const factMatches = obsXml.matchAll(/<fact>([\s\S]*?)<\/fact>/g)
+            for (const factMatch of factMatches) {
+                facts.push(factMatch[1].trim())
+            }
+
+            // Extract concepts array
+            const concepts: string[] = []
+            const conceptMatches = obsXml.matchAll(/<concept>([\s\S]*?)<\/concept>/g)
+            for (const conceptMatch of conceptMatches) {
+                concepts.push(conceptMatch[1].trim())
+            }
+
+            if (titleMatch && narrativeMatch) {
+                observations.push({
+                    type: typeMatch?.[1]?.trim() || "fact",
+                    title: titleMatch[1].trim(),
+                    subtitle: subtitleMatch?.[1]?.trim() || "",
+                    facts,
+                    narrative: narrativeMatch[1].trim(),
+                    concepts
+                })
+            }
+        }
+
+        return observations
+    }
+
+    /**
+     * Extract observations from a conversation using LLM extraction.
+     * Matches production claude-mem XML format with facts array.
+     */
+    private async extractObservations(conversationText: string, sessionDate?: string): Promise<ExtractedObservation[]> {
+        if (!config.openaiApiKey) {
+            logger.warn("No OpenAI API key - falling back to raw storage")
+            return []
+        }
+
+        const client = createOpenAI({ apiKey: config.openaiApiKey })
+
+        try {
+            const result = await generateText({
+                model: client("gpt-4.1-mini"),
+                messages: [{ role: "user", content: EXTRACTION_PROMPT + conversationText }],
+            })
+
+            // Parse XML observations
+            const text = result.text.trim()
+            const observations = this.parseXmlObservations(text)
+
+            if (observations.length === 0) {
+                logger.warn("Extraction returned no valid observations, falling back to raw storage")
+                return []
+            }
+
+            // Add session date context to narrative
+            if (sessionDate) {
+                return observations.map(obs => ({
+                    ...obs,
+                    narrative: `[${sessionDate}] ${obs.narrative}`
+                }))
+            }
+            return observations
+        } catch (e) {
+            logger.warn(`Extraction failed: ${e}, falling back to raw storage`)
+            return []
+        }
+    }
+
+    async initialize(providerConfig: ProviderConfig): Promise<void> {
+        this.workerUrl = providerConfig.baseUrl || process.env.ANAMNESIS_WORKER_URL || "http://localhost:37777"
         this.dbPath = process.env.ANAMNESIS_DB || `${process.env.HOME}/.claude-mem/claude-mem.db`
+
+        // Check for extraction mode - when enabled, uses LLM to extract observations
+        // like Mem0 does, rather than storing raw transcripts
+        this.extractionMode = process.env.ANAMNESIS_EXTRACTION === "true"
+        if (this.extractionMode) {
+            logger.info("Extraction mode ENABLED - will use LLM to extract observations (like Mem0)")
+        } else {
+            logger.info("Extraction mode disabled - storing raw transcripts (RAG mode)")
+        }
 
         // Verify worker is running
         try {
@@ -69,7 +221,7 @@ export class AnamnesisProvider implements Provider {
         // Prepare insert statement
         const insert = db.prepare(`
             INSERT INTO observations (
-                sdk_session_id, project, type, title, subtitle,
+                memory_session_id, project, type, title, subtitle,
                 narrative, facts, concepts, files_read, files_modified,
                 created_at, created_at_epoch, namespace, confidence
             ) VALUES (
@@ -79,50 +231,77 @@ export class AnamnesisProvider implements Provider {
             )
         `)
 
-        const transaction = db.transaction((sessions: UnifiedSession[]) => {
-            for (const session of sessions) {
-                // Convert MemoryBench session to observation format
-                // IMPORTANT: Include session date for temporal reasoning
-                // LoCoMo uses relative dates ("yesterday") that need context to resolve
-                const formattedDate = session.metadata?.formattedDate as string | undefined
-                const datePrefix = formattedDate
-                    ? `[Conversation Date: ${formattedDate}]\n\n`
-                    : ''
+        // Process each session
+        for (const session of sessions) {
+            const formattedDate = session.metadata?.formattedDate as string | undefined
+            const datePrefix = formattedDate
+                ? `[Conversation Date: ${formattedDate}]\n\n`
+                : ''
 
-                const content = datePrefix + session.messages
-                    .map(m => `[${m.speaker || m.role}]: ${m.content}`)
-                    .join("\n\n")
+            const conversationText = datePrefix + session.messages
+                .map(m => `[${m.speaker || m.role}]: ${m.content}`)
+                .join("\n\n")
 
-                // Extract key facts from messages
-                const facts = session.messages
-                    .filter(m => m.role === "assistant" || m.speaker)
-                    .map(m => m.content.slice(0, 500))
+            // EXTRACTION MODE: Use LLM to extract semantic observations (like Mem0)
+            if (this.extractionMode) {
+                const extractedObs = await this.extractObservations(conversationText, formattedDate)
 
-                // Include date in title for better searchability
-                const dateStr = formattedDate ? ` (${formattedDate})` : ''
-                const result = insert.run(
-                    `memorybench-${containerTag}`,  // sdk_session_id
-                    "memorybench",                   // project
-                    "fact",                          // type (benchmark data is factual)
-                    `Session ${session.sessionId}${dateStr}`,  // title with date
-                    `MemoryBench session with ${session.messages.length} messages`,  // subtitle
-                    content,                         // narrative
-                    JSON.stringify(facts),           // facts
-                    JSON.stringify(["benchmark", "memorybench", containerTag]),  // concepts
-                    "[]",                            // files_read
-                    "[]",                            // files_modified
-                    nowISO,                          // created_at
-                    now,                             // created_at_epoch
-                    containerTag,                    // namespace (for easy cleanup)
-                    0.8                              // confidence (benchmark data is reliable)
-                )
-
-                documentIds.push(result.lastInsertRowid.toString())
-                logger.debug(`Ingested session ${session.sessionId} as observation ${result.lastInsertRowid}`)
+                if (extractedObs.length > 0) {
+                    for (const obs of extractedObs) {
+                        // Combine extracted concepts with benchmark tags
+                        const concepts = [...obs.concepts, "benchmark", "memorybench", containerTag, "extracted"]
+                        const result = insert.run(
+                            `memorybench-${containerTag}`,   // memory_session_id
+                            "memorybench",                   // project
+                            obs.type || "discovery",         // type (semantic type from extraction)
+                            obs.title,                       // title from extraction
+                            obs.subtitle || `Extracted from ${session.sessionId}`,  // subtitle
+                            obs.narrative,                   // narrative from extraction
+                            JSON.stringify(obs.facts),       // facts array (preserves dates!)
+                            JSON.stringify(concepts),        // concepts from extraction + tags
+                            "[]",                            // files_read
+                            "[]",                            // files_modified
+                            nowISO,                          // created_at
+                            now,                             // created_at_epoch
+                            containerTag,                    // namespace
+                            0.8                              // confidence
+                        )
+                        documentIds.push(result.lastInsertRowid.toString())
+                    }
+                    logger.debug(`Extracted ${extractedObs.length} observations from session ${session.sessionId}`)
+                    continue
+                }
+                // Fall through to raw storage if extraction failed
+                logger.warn(`Extraction failed for ${session.sessionId}, using raw storage`)
             }
-        })
 
-        transaction(sessions)
+            // RAW MODE: Store full conversation text (default behavior)
+            const facts = session.messages
+                .filter(m => m.role === "assistant" || m.speaker)
+                .map(m => m.content.slice(0, 500))
+
+            const dateStr = formattedDate ? ` (${formattedDate})` : ''
+            const result = insert.run(
+                `memorybench-${containerTag}`,  // memory_session_id
+                "memorybench",                   // project
+                "fact",                          // type (benchmark data is factual)
+                `Session ${session.sessionId}${dateStr}`,  // title with date
+                `MemoryBench session with ${session.messages.length} messages`,  // subtitle
+                conversationText,                // narrative (full conversation)
+                JSON.stringify(facts),           // facts (individual message excerpts)
+                JSON.stringify(["benchmark", "memorybench", containerTag]),  // concepts
+                "[]",                            // files_read
+                "[]",                            // files_modified
+                nowISO,                          // created_at
+                now,                             // created_at_epoch
+                containerTag,                    // namespace (for easy cleanup)
+                0.8                              // confidence (benchmark data is reliable)
+            )
+
+            documentIds.push(result.lastInsertRowid.toString())
+            logger.debug(`Ingested session ${session.sessionId} as observation ${result.lastInsertRowid}`)
+        }
+
         db.close()
 
         logger.info(`Ingested ${sessions.length} sessions for container ${containerTag}`)
