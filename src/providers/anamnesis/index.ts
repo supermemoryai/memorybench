@@ -382,6 +382,7 @@ export class AnamnesisProvider implements Provider {
             const params = new URLSearchParams({
                 query,
                 limit: semanticLimit.toString(),
+                project: "memorybench",  // Filter to benchmark observations only
             })
 
             const response = await fetch(`${this.workerUrl}/api/search?${params}`, {
