@@ -383,6 +383,7 @@ export class AnamnesisProvider implements Provider {
                 query,
                 limit: semanticLimit.toString(),
                 project: "memorybench",  // Filter to benchmark observations only
+                namespace: containerTag,  // Filter to this question's observations only
             })
 
             const response = await fetch(`${this.workerUrl}/api/search?${params}`, {
