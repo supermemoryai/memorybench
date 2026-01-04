@@ -1,4 +1,5 @@
 import { readFileSync, existsSync } from "fs"
+import { spawn } from "child_process"
 import { createOpenAI } from "@ai-sdk/openai"
 import { createAnthropic } from "@ai-sdk/anthropic"
 import { createGoogleGenerativeAI } from "@ai-sdk/google"
@@ -14,9 +15,48 @@ import { buildDefaultAnswerPrompt } from "../../prompts/defaults"
 import { buildContextString } from "../../types/prompts"
 import { shouldStop } from "../../server/runState"
 
+/**
+ * Call Claude CLI in print mode for text generation.
+ * Uses subprocess to avoid API key requirements.
+ */
+async function generateTextViaCli(prompt: string, modelAlias: string): Promise<string> {
+    return new Promise((resolve, reject) => {
+        const claude = spawn('claude', [
+            '-p', prompt,
+            '--output-format', 'json',
+            '--model', modelAlias,
+            '--max-budget-usd', '1.00',  // Allow $1 per answer (generous)
+        ], {
+            timeout: 180000,  // 3 minute timeout
+            cwd: process.cwd(),
+        })
+
+        let stdout = ''
+        let stderr = ''
+
+        claude.stdout.on('data', (data) => { stdout += data })
+        claude.stderr.on('data', (data) => { stderr += data })
+
+        claude.on('close', (code) => {
+            if (code === 0) {
+                try {
+                    const response = JSON.parse(stdout)
+                    resolve(response.result?.trim() || '')
+                } catch {
+                    resolve(stdout.trim())
+                }
+            } else {
+                reject(new Error(`Claude CLI exited with code ${code}: ${stderr}`))
+            }
+        })
+
+        claude.on('error', reject)
+    })
+}
+
 type LanguageModel = ReturnType<typeof createOpenAI> | ReturnType<typeof createAnthropic> | ReturnType<typeof createGoogleGenerativeAI>
 
-function getAnsweringModel(modelAlias: string): { client: LanguageModel; modelConfig: ModelConfig } {
+function getAnsweringModel(modelAlias: string): { client: LanguageModel | null; modelConfig: ModelConfig } {
     const modelConfig = getModelConfig(modelAlias || DEFAULT_ANSWERING_MODEL)
 
     switch (modelConfig.provider) {
@@ -33,6 +73,12 @@ function getAnsweringModel(modelAlias: string): { client: LanguageModel; modelCo
         case "google":
             return {
                 client: createGoogleGenerativeAI({ apiKey: config.googleApiKey }),
+                modelConfig,
+            }
+        case "cli":
+            // CLI uses subprocess instead of API client
+            return {
+                client: null,
                 modelConfig,
             }
     }
@@ -110,17 +156,26 @@ export async function runAnswerPhase(
 
             const prompt = buildAnswerPrompt(question.question, context, questionDate, provider)
 
-            const params: Record<string, unknown> = {
-                model: client(modelConfig.id),
-                prompt,
-                maxTokens: modelConfig.defaultMaxTokens,
-            }
+            let text: string
 
-            if (modelConfig.supportsTemperature) {
-                params.temperature = modelConfig.defaultTemperature
-            }
+            if (modelConfig.provider === "cli") {
+                // Use CLI subprocess for Claude models
+                text = await generateTextViaCli(prompt, modelConfig.id)
+            } else {
+                // Use AI SDK for API-based models
+                const params: Record<string, unknown> = {
+                    model: client!(modelConfig.id),
+                    prompt,
+                    maxTokens: modelConfig.defaultMaxTokens,
+                }
 
-            const { text } = await generateText(params as Parameters<typeof generateText>[0])
+                if (modelConfig.supportsTemperature) {
+                    params.temperature = modelConfig.defaultTemperature
+                }
+
+                const result = await generateText(params as Parameters<typeof generateText>[0])
+                text = result.text
+            }
 
             const durationMs = Date.now() - startTime
             checkpointManager.updatePhase(checkpoint, question.questionId, "answer", {

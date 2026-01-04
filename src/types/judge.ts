@@ -30,4 +30,4 @@ export interface Judge {
     getModel(): import("ai").LanguageModel
 }
 
-export type JudgeName = "openai" | "anthropic" | "google"
+export type JudgeName = "openai" | "anthropic" | "google" | "cli"

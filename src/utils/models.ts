@@ -1,6 +1,6 @@
 export interface ModelConfig {
     id: string
-    provider: "openai" | "anthropic" | "google"
+    provider: "openai" | "anthropic" | "google" | "cli"
     displayName: string
     supportsTemperature: boolean
     defaultTemperature: number
@@ -177,6 +177,35 @@ export const MODEL_CONFIGS: Record<string, ModelConfig> = {
         defaultMaxTokens: 1000,
     },
 
+    // Claude CLI - Uses local `claude` command (no API key needed)
+    "sonnet-cli": {
+        id: "sonnet",  // Model alias for claude CLI --model flag
+        provider: "cli",
+        displayName: "Claude Sonnet (CLI)",
+        supportsTemperature: false,  // CLI doesn't support temp param
+        defaultTemperature: 0,
+        maxTokensParam: "maxTokens",
+        defaultMaxTokens: 1000,
+    },
+    "haiku-cli": {
+        id: "haiku",
+        provider: "cli",
+        displayName: "Claude Haiku (CLI)",
+        supportsTemperature: false,
+        defaultTemperature: 0,
+        maxTokensParam: "maxTokens",
+        defaultMaxTokens: 1000,
+    },
+    "opus-cli": {
+        id: "opus",
+        provider: "cli",
+        displayName: "Claude Opus (CLI)",
+        supportsTemperature: false,
+        defaultTemperature: 0,
+        maxTokensParam: "maxTokens",
+        defaultMaxTokens: 1000,
+    },
+
     // Google - Gemini 2.x (support temperature)
     "gemini-2.5-pro": {
         id: "gemini-2.5-pro",
@@ -298,6 +327,20 @@ export function getModelConfig(alias: string): ModelConfig {
         }
     }
 
+    // CLI suffix detection (e.g., "custom-cli")
+    if (alias.endsWith("-cli")) {
+        const modelAlias = alias.replace(/-cli$/, "")
+        return {
+            id: modelAlias,
+            provider: "cli",
+            displayName: `${alias} (CLI)`,
+            supportsTemperature: false,
+            defaultTemperature: 0,
+            maxTokensParam: "maxTokens",
+            defaultMaxTokens: 1000,
+        }
+    }
+
     // Default fallback
     return {
         id: alias,
@@ -321,7 +364,7 @@ export function getModelId(alias: string): string {
     return getModelConfig(alias).id
 }
 
-export function getModelProvider(alias: string): "openai" | "anthropic" | "google" {
+export function getModelProvider(alias: string): "openai" | "anthropic" | "google" | "cli" {
     return getModelConfig(alias).provider
 }
 

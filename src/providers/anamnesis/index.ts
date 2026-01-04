@@ -1,6 +1,5 @@
 import Database from "bun:sqlite"
-import { createOpenAI } from "@ai-sdk/openai"
-import { generateText } from "ai"
+import { spawn } from "child_process"
 import type { Provider, ProviderConfig, IngestOptions, IngestResult, SearchOptions } from "../../types/provider"
 import type { UnifiedSession } from "../../types/unified"
 import { logger } from "../../utils/logger"
@@ -126,25 +125,57 @@ export class AnamnesisProvider implements Provider {
     }
 
     /**
-     * Extract observations from a conversation using LLM extraction.
+     * Extract observations from a conversation using Claude CLI.
+     * Uses print mode (-p) which is completely stateless - no hooks, no memory injection.
      * Matches production claude-mem XML format with facts array.
      */
     private async extractObservations(conversationText: string, sessionDate?: string): Promise<ExtractedObservation[]> {
-        if (!config.openaiApiKey) {
-            logger.warn("No OpenAI API key - falling back to raw storage")
-            return []
-        }
-
-        const client = createOpenAI({ apiKey: config.openaiApiKey })
-
         try {
-            const result = await generateText({
-                model: client("gpt-4.1-mini"),
-                messages: [{ role: "user", content: EXTRACTION_PROMPT + conversationText }],
+            const prompt = EXTRACTION_PROMPT + conversationText
+
+            // Call Claude CLI in print mode with JSON output
+            // -p flag = print mode (stateless, no hooks, no memory)
+            // --max-budget-usd caps spend per extraction call
+            // Use Haiku for faster extraction
+            const result = await new Promise<string>((resolve, reject) => {
+                const timeoutMs = 300000  // 5 minute timeout
+                const claude = spawn('claude', [
+                    '-p', prompt,
+                    '--output-format', 'json',
+                    '--model', 'haiku',  // Fast model for extraction
+                    '--max-budget-usd', '1.00',  // Allow $1 per extraction (generous)
+                ], {
+                    cwd: process.cwd(),
+                })
+
+                // Manual timeout handler (spawn timeout doesn't kill process reliably)
+                const timeout = setTimeout(() => {
+                    claude.kill()
+                    reject(new Error(`Claude CLI timed out after ${timeoutMs}ms`))
+                }, timeoutMs)
+
+                let stdout = ''
+                let stderr = ''
+
+                claude.stdout.on('data', (data) => { stdout += data })
+                claude.stderr.on('data', (data) => { stderr += data })
+
+                claude.on('close', (code) => {
+                    clearTimeout(timeout)
+                    if (code === 0) resolve(stdout)
+                    else reject(new Error(`Claude CLI exited with code ${code}: ${stderr}`))
+                })
+
+                claude.on('error', (err) => {
+                    clearTimeout(timeout)
+                    reject(err)
+                })
             })
 
-            // Parse XML observations
-            const text = result.text.trim()
+            // Parse Claude's JSON response
+            const response = JSON.parse(result)
+            const text = response.result?.trim() || ''
+
             const observations = this.parseXmlObservations(text)
 
             if (observations.length === 0) {
@@ -231,20 +262,50 @@ export class AnamnesisProvider implements Provider {
             )
         `)
 
-        // Process each session
-        for (const session of sessions) {
+        // Prepare session data with conversation text
+        const sessionData = sessions.map(session => {
             const formattedDate = session.metadata?.formattedDate as string | undefined
             const datePrefix = formattedDate
                 ? `[Conversation Date: ${formattedDate}]\n\n`
                 : ''
-
             const conversationText = datePrefix + session.messages
                 .map(m => `[${m.speaker || m.role}]: ${m.content}`)
                 .join("\n\n")
+            return { session, formattedDate, conversationText }
+        })
 
-            // EXTRACTION MODE: Use LLM to extract semantic observations (like Mem0)
+        // PARALLEL EXTRACTION: Run all extractions concurrently (with limit)
+        type ExtractionResult = { sessionId: string; observations: ExtractedObservation[]; formattedDate?: string }
+        const extractionResults: ExtractionResult[] = []
+
+        if (this.extractionMode) {
+            const CONCURRENCY = 5  // Limit parallel CLI processes
+            logger.info(`Extracting ${sessionData.length} sessions in parallel (concurrency: ${CONCURRENCY})...`)
+
+            // Process in batches for controlled parallelism
+            for (let i = 0; i < sessionData.length; i += CONCURRENCY) {
+                const batch = sessionData.slice(i, i + CONCURRENCY)
+                const batchPromises = batch.map(async ({ session, formattedDate, conversationText }) => {
+                    const observations = await this.extractObservations(conversationText, formattedDate)
+                    return { sessionId: session.sessionId, observations, formattedDate }
+                })
+
+                const batchResults = await Promise.all(batchPromises)
+                extractionResults.push(...batchResults)
+
+                const completed = Math.min(i + CONCURRENCY, sessionData.length)
+                logger.debug(`Extraction progress: ${completed}/${sessionData.length} sessions`)
+            }
+        }
+
+        // Process each session (DB inserts are sequential for safety)
+        for (let idx = 0; idx < sessionData.length; idx++) {
+            const { session, formattedDate, conversationText } = sessionData[idx]
+
+            // EXTRACTION MODE: Use pre-extracted observations
             if (this.extractionMode) {
-                const extractedObs = await this.extractObservations(conversationText, formattedDate)
+                const extracted = extractionResults.find(r => r.sessionId === session.sessionId)
+                const extractedObs = extracted?.observations || []
 
                 if (extractedObs.length > 0) {
                     for (const obs of extractedObs) {
@@ -268,7 +329,7 @@ export class AnamnesisProvider implements Provider {
                         )
                         documentIds.push(result.lastInsertRowid.toString())
                     }
-                    logger.debug(`Extracted ${extractedObs.length} observations from session ${session.sessionId}`)
+                    logger.debug(`Stored ${extractedObs.length} extracted observations from session ${session.sessionId}`)
                     continue
                 }
                 // Fall through to raw storage if extraction failed
