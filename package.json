@@ -13,6 +13,7 @@
     "@ai-sdk/google": "^2.0.49",
     "@ai-sdk/openai": "^2.0.88",
     "@getzep/zep-cloud": "^3.13.0",
+    "@memvid/sdk": "^2.0.146",
     "ai": "^5.0.115",
     "drizzle-orm": "^0.45.1",
     "mem0ai": "^2.1.38",

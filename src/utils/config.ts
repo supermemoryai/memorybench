@@ -26,6 +26,8 @@ export function getProviderConfig(provider: string): { apiKey: string; baseUrl?:
       return { apiKey: config.mem0ApiKey }
     case "zep":
       return { apiKey: config.zepApiKey }
+    case "memvid":
+      return { apiKey: "" } // Memvid doesn't need api key for basic use
     default:
       throw new Error(`Unknown provider: ${provider}`)
   }

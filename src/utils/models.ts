@@ -225,6 +225,15 @@ export const MODEL_CONFIGS: Record<string, ModelConfig> = {
     maxTokensParam: "maxTokens",
     defaultMaxTokens: 1000,
   },
+  "gemini-3-flash": {
+    id: "gemini-3-flash-preview",
+    provider: "google",
+    displayName: "Gemini 3 Flash",
+    supportsTemperature: true,
+    defaultTemperature: 1,
+    maxTokensParam: "maxTokens",
+    defaultMaxTokens: 1000,
+  },
 }
 
 export const DEFAULT_ANSWERING_MODEL = "gpt-4o"

@@ -3,11 +3,13 @@ import type { ConcurrencyConfig } from "../types/concurrency"
 import { SupermemoryProvider } from "./supermemory"
 import { Mem0Provider } from "./mem0"
 import { ZepProvider } from "./zep"
+import { MemvidProvider } from "./memvid"
 
 const providers: Record<ProviderName, new () => Provider> = {
   supermemory: SupermemoryProvider,
   mem0: Mem0Provider,
   zep: ZepProvider,
+  memvid: MemvidProvider,
 }
 
 export function createProvider(name: ProviderName): Provider {
@@ -35,4 +37,4 @@ export function getProviderInfo(name: ProviderName): {
   }
 }
 
-export { SupermemoryProvider, Mem0Provider, ZepProvider }
+export { SupermemoryProvider, Mem0Provider, ZepProvider, MemvidProvider }
