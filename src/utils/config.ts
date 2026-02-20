@@ -30,6 +30,8 @@ export function getProviderConfig(provider: string): { apiKey: string; baseUrl?:
       return { apiKey: config.openaiApiKey } // Filesystem uses OpenAI for memory extraction
     case "rag":
       return { apiKey: config.openaiApiKey } // RAG provider uses OpenAI for embeddings
+    case "ragzoom":
+      return { apiKey: "", baseUrl: process.env.RAGZOOM_BRIDGE_URL || "http://localhost:8079" } // RagZoom is local, no API key needed
     default:
       throw new Error(`Unknown provider: ${provider}`)
   }
