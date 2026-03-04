@@ -60,7 +60,7 @@ Conversation to analyze:
 `
 
 /**
- * AnamnesisProvider - MemoryBench provider for Tim's claude-mem memory system.
+ * AnamnesisProvider - MemoryBench provider for claude-mem memory systems.
  *
  * Anamnesis (Greek: ἀνάμνησις) - Plato's concept that learning is recollection.
  * This reflects Claude's reality: we don't truly "remember" between sessions,
@@ -386,8 +386,9 @@ export class AnamnesisProvider implements Provider {
         let totalEmbedded = 0
 
         // Find the chroma-mcp Python environment (matches ChromaDB version)
-        const chromaPython = process.env.CHROMA_PYTHON ||
-            `${process.env.HOME}/.cache/uv/archive-v0/M3K4_j6jvY5-Rm7WgJRtz/bin/python`
+        // CHROMA_PYTHON should point to the Python with matching ChromaDB version as chroma-mcp.
+        // Falls back to system python3 — works if ChromaDB versions match.
+        const chromaPython = process.env.CHROMA_PYTHON || "python3"
         const embedScript = new URL("embed.py", import.meta.url).pathname
 
         logger.info(`Embedding ${allIds.length} observations via ChromaDB direct...`)
@@ -452,8 +453,9 @@ export class AnamnesisProvider implements Provider {
         const containerTag = options.containerTag
 
         // Find the chroma-mcp Python environment
-        const chromaPython = process.env.CHROMA_PYTHON ||
-            `${process.env.HOME}/.cache/uv/archive-v0/M3K4_j6jvY5-Rm7WgJRtz/bin/python`
+        // CHROMA_PYTHON should point to the Python with matching ChromaDB version as chroma-mcp.
+        // Falls back to system python3 — works if ChromaDB versions match.
+        const chromaPython = process.env.CHROMA_PYTHON || "python3"
         const searchScript = new URL("search.py", import.meta.url).pathname
 
         // --- SEMANTIC SEARCH via ChromaDB ---
