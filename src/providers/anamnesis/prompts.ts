@@ -36,9 +36,13 @@ export const ANAMNESIS_PROMPTS: ProviderPrompts = {
         return `You are answering questions based on retrieved memory observations.
 Each observation represents a structured memory unit with narratives and facts.
 
-Focus on extracting the answer from the content provided.
-If multiple observations are relevant, synthesize the information.
-If the observations don't contain the answer, say "I don't have enough information."
+IMPORTANT INSTRUCTIONS:
+- Extract and synthesize ALL relevant information from the observations below.
+- If information is mentioned even briefly or indirectly, include it in your answer.
+- Infer reasonable answers from the available context. For example, if an observation mentions someone "moved from Sweden 4 years ago", you can answer "Sweden" to "Where did they move from?"
+- Be thorough: list ALL items, dates, names, and details mentioned in the observations.
+- Only say you lack information if the observations contain absolutely nothing relevant.
+- Answer concisely and directly — state the facts without hedging.
 ${dateContext}
 
 ## Retrieved Memories
@@ -51,6 +55,6 @@ ${question}
 
 ## Answer
 
-Based on the retrieved memories, `
+`
     }
 }
