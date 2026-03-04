@@ -1,6 +1,8 @@
 import { sqliteTable, text, integer, real, uniqueIndex } from "drizzle-orm/sqlite-core"
 
-export const leaderboardEntries = sqliteTable("leaderboard_entries", {
+export const leaderboardEntries = sqliteTable(
+  "leaderboard_entries",
+  {
     id: integer("id").primaryKey({ autoIncrement: true }),
 
     // Run identification
@@ -32,14 +34,16 @@ export const leaderboardEntries = sqliteTable("leaderboard_entries", {
     answeringModel: text("answering_model").notNull(),
     addedAt: text("added_at").notNull(),
     notes: text("notes"),
-}, (table) => ({
+  },
+  (table) => ({
     // Unique constraint: same provider+benchmark+version replaces existing entry
     providerBenchmarkVersion: uniqueIndex("provider_benchmark_version_idx").on(
-        table.provider,
-        table.benchmark,
-        table.version
+      table.provider,
+      table.benchmark,
+      table.version
     ),
-}))
+  })
+)
 
 export type LeaderboardEntry = typeof leaderboardEntries.$inferSelect
 export type NewLeaderboardEntry = typeof leaderboardEntries.$inferInsert

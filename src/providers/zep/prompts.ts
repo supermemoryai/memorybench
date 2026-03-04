@@ -1,34 +1,34 @@
 import type { ProviderPrompts } from "../../types/prompts"
 
 interface ZepResult {
-    _type?: string
-    fact?: string
-    name?: string
-    summary?: string
-    valid_at?: string
-    invalid_at?: string
+  _type?: string
+  fact?: string
+  name?: string
+  summary?: string
+  valid_at?: string
+  invalid_at?: string
 }
 
 function buildZepContext(context: unknown[]): string {
-    const facts: string[] = []
-    const entities: string[] = []
+  const facts: string[] = []
+  const entities: string[] = []
 
-    for (const r of context) {
-        const result = r as ZepResult
-        const type = result._type
+  for (const r of context) {
+    const result = r as ZepResult
+    const type = result._type
 
-        if (type === "node") {
-            const name = result.name || "Unknown"
-            const summary = result.summary || ""
-            entities.push(`  - ${name}: ${summary}`)
-        } else {
-            const content = result.fact || JSON.stringify(r)
-            const validAt = result.valid_at
-            facts.push(`  - ${content} (event_time: ${validAt || "unknown"})`)
-        }
+    if (type === "node") {
+      const name = result.name || "Unknown"
+      const summary = result.summary || ""
+      entities.push(`  - ${name}: ${summary}`)
+    } else {
+      const content = result.fact || JSON.stringify(r)
+      const validAt = result.valid_at
+      facts.push(`  - ${content} (event_time: ${validAt || "unknown"})`)
     }
+  }
 
-    let contextStr = `FACTS and ENTITIES represent relevant context to the current conversation.
+  let contextStr = `FACTS and ENTITIES represent relevant context to the current conversation.
 
 # These are the most relevant facts for the conversation along with the datetime of the event that the fact refers to.
 # If a fact mentions something happening a week ago, then the datetime will be the date time of last week and not the datetime
@@ -39,23 +39,23 @@ function buildZepContext(context: unknown[]): string {
 ${facts.join("\n")}
 </FACTS>`
 
-    if (entities.length > 0) {
-        contextStr += `
+  if (entities.length > 0) {
+    contextStr += `
 
 # These are the most relevant entities
 # ENTITY_NAME: entity summary
 <ENTITIES>
 ${entities.join("\n")}
 </ENTITIES>`
-    }
+  }
 
-    return contextStr
+  return contextStr
 }
 
 export function buildZepAnswerPrompt(question: string, context: unknown[]): string {
-    const contextStr = buildZepContext(context)
+  const contextStr = buildZepContext(context)
 
-    return `# CONTEXT:
+  return `# CONTEXT:
 You have access to facts and entities from a conversation.
 
 # INSTRUCTIONS:
@@ -97,7 +97,7 @@ Answer:`
 }
 
 export function buildZepJudgePrompt(question: string, groundTruth: string, hypothesis: string) {
-    const prompt = `Your task is to label an answer to a question as 'CORRECT' or 'WRONG'. You will be given the following data:
+  const prompt = `Your task is to label an answer to a question as 'CORRECT' or 'WRONG'. You will be given the following data:
     (1) a question (posed by one user to another user),
     (2) a 'gold' (ground truth) answer,
     (3) a generated answer
@@ -122,10 +122,10 @@ First, provide a short (one sentence) explanation of your reasoning, then respon
 
 Do NOT include both labels in your response.`
 
-    return { default: prompt }
+  return { default: prompt }
 }
 
 export const ZEP_PROMPTS: ProviderPrompts = {
-    answerPrompt: buildZepAnswerPrompt,
-    judgePrompt: buildZepJudgePrompt,
+  answerPrompt: buildZepAnswerPrompt,
+  judgePrompt: buildZepJudgePrompt,
 }

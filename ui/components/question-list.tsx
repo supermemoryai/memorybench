@@ -21,7 +21,7 @@ export function QuestionList({ runId, questions, questionTypeRegistry }: Questio
   // Get unique question types with counts
   const questionTypes = useMemo(() => {
     const counts: Record<string, number> = {}
-    questions.forEach(q => {
+    questions.forEach((q) => {
       counts[q.questionType] = (counts[q.questionType] || 0) + 1
     })
     return Object.entries(counts).map(([value, count]) => ({
@@ -33,12 +33,12 @@ export function QuestionList({ runId, questions, questionTypeRegistry }: Questio
 
   // Count failures
   const failureCount = useMemo(() => {
-    return questions.filter(q => q.phases.evaluate.label === "incorrect").length
+    return questions.filter((q) => q.phases.evaluate.label === "incorrect").length
   }, [questions])
 
   // Filter questions
   const filtered = useMemo(() => {
-    return questions.filter(q => {
+    return questions.filter((q) => {
       // Failures filter
       if (showFailuresOnly && q.phases.evaluate.label !== "incorrect") {
         return false
@@ -66,11 +66,7 @@ export function QuestionList({ runId, questions, questionTypeRegistry }: Questio
   const hasActiveFilters = search || selectedTypes.length > 0 || showFailuresOnly
 
   if (questions.length === 0) {
-    return (
-      <div className="text-center py-8 text-text-secondary">
-        No questions found
-      </div>
-    )
+    return <div className="text-center py-8 text-text-secondary">No questions found</div>
   }
 
   return (
@@ -80,7 +76,8 @@ export function QuestionList({ runId, questions, questionTypeRegistry }: Questio
         {/* Header row */}
         <div className="flex items-center justify-between text-sm px-1 mb-2">
           <span className="text-text-secondary">
-            Showing {filtered.length} of {questions.length} {questions.length === 1 ? "question" : "questions"}
+            Showing {filtered.length} of {questions.length}{" "}
+            {questions.length === 1 ? "question" : "questions"}
           </span>
           <button
             type="button"
@@ -110,7 +107,11 @@ export function QuestionList({ runId, questions, questionTypeRegistry }: Questio
                 stroke="currentColor"
                 strokeWidth={2}
               >
-                <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                />
               </svg>
               <input
                 type="text"
@@ -145,10 +146,12 @@ export function QuestionList({ runId, questions, questionTypeRegistry }: Questio
             onClick={() => setShowFailuresOnly(!showFailuresOnly)}
           >
             <span>Failures</span>
-            <span className={cn(
-              "text-xs px-1.5 py-0.5 rounded",
-              showFailuresOnly ? "bg-status-error/20" : "bg-bg-elevated"
-            )}>
+            <span
+              className={cn(
+                "text-xs px-1.5 py-0.5 rounded",
+                showFailuresOnly ? "bg-status-error/20" : "bg-bg-elevated"
+              )}
+            >
               {failureCount}
             </span>
           </button>
@@ -198,7 +201,8 @@ export function QuestionList({ runId, questions, questionTypeRegistry }: Questio
                     className="text-xs px-2 py-0.5 rounded bg-bg-primary text-text-muted flex-shrink-0 cursor-default"
                     title={q.questionType}
                   >
-                    {questionTypeRegistry?.[q.questionType]?.alias || q.questionType.replace(/[-_]/g, " ")}
+                    {questionTypeRegistry?.[q.questionType]?.alias ||
+                      q.questionType.replace(/[-_]/g, " ")}
                   </span>
 
                   {/* Question text */}
@@ -207,10 +211,12 @@ export function QuestionList({ runId, questions, questionTypeRegistry }: Questio
                   </span>
 
                   {/* Status label */}
-                  <span className={cn(
-                    "text-sm font-medium flex-shrink-0",
-                    isCorrect ? "text-status-success" : "text-status-error"
-                  )}>
+                  <span
+                    className={cn(
+                      "text-sm font-medium flex-shrink-0",
+                      isCorrect ? "text-status-success" : "text-status-error"
+                    )}
+                  >
                     {isCorrect ? "correct" : "incorrect"}
                   </span>
 
@@ -231,25 +237,33 @@ export function QuestionList({ runId, questions, questionTypeRegistry }: Questio
 
                 {/* Expanded content */}
                 {isExpanded && (
-                  <div className={cn(
-                    "px-4 py-4 space-y-4 bg-bg-primary border-t border-border overflow-hidden",
-                    !isLast && "border-b border-border"
-                  )}>
+                  <div
+                    className={cn(
+                      "px-4 py-4 space-y-4 bg-bg-primary border-t border-border overflow-hidden",
+                      !isLast && "border-b border-border"
+                    )}
+                  >
                     {/* Question */}
                     <div className="min-w-0">
-                      <div className="text-xs text-text-muted uppercase tracking-wide mb-1">Question</div>
+                      <div className="text-xs text-text-muted uppercase tracking-wide mb-1">
+                        Question
+                      </div>
                       <div className="text-sm text-text-primary break-words">{q.question}</div>
                     </div>
 
                     <div className="grid grid-cols-2 gap-4 min-w-0">
                       <div className="min-w-0">
-                        <div className="text-xs text-text-muted uppercase tracking-wide mb-1">Ground Truth</div>
+                        <div className="text-xs text-text-muted uppercase tracking-wide mb-1">
+                          Ground Truth
+                        </div>
                         <div className="text-sm text-text-primary font-mono bg-bg-elevated p-2 rounded break-words">
                           {q.groundTruth}
                         </div>
                       </div>
                       <div className="min-w-0">
-                        <div className="text-xs text-text-muted uppercase tracking-wide mb-1">Model Answer</div>
+                        <div className="text-xs text-text-muted uppercase tracking-wide mb-1">
+                          Model Answer
+                        </div>
                         <div className="text-sm text-text-primary font-mono bg-bg-elevated p-2 rounded break-words">
                           {q.phases.answer.hypothesis || "—"}
                         </div>
@@ -258,8 +272,12 @@ export function QuestionList({ runId, questions, questionTypeRegistry }: Questio
 
                     {q.phases.evaluate.explanation && (
                       <div className="min-w-0">
-                        <div className="text-xs text-text-muted uppercase tracking-wide mb-1">Explanation</div>
-                        <div className="text-sm text-text-secondary break-words">{q.phases.evaluate.explanation}</div>
+                        <div className="text-xs text-text-muted uppercase tracking-wide mb-1">
+                          Explanation
+                        </div>
+                        <div className="text-sm text-text-secondary break-words">
+                          {q.phases.evaluate.explanation}
+                        </div>
                       </div>
                     )}
 
@@ -267,7 +285,7 @@ export function QuestionList({ runId, questions, questionTypeRegistry }: Questio
                       <Link
                         href={`/runs/${encodeURIComponent(runId)}/questions/${encodeURIComponent(q.questionId)}`}
                         className="text-sm text-accent hover:underline"
-                        onClick={e => e.stopPropagation()}
+                        onClick={(e) => e.stopPropagation()}
                       >
                         View full details →
                       </Link>

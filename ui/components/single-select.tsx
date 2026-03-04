@@ -73,7 +73,7 @@ export function SingleSelect({
   }
 
   const displayText = selected
-    ? options.find(o => o.value === selected)?.label || selected
+    ? options.find((o) => o.value === selected)?.label || selected
     : placeholder || label
 
   return (
@@ -105,65 +105,65 @@ export function SingleSelect({
       </button>
 
       {/* Dropdown - rendered via portal */}
-      {open && typeof document !== "undefined" && createPortal(
-        <div
-          ref={dropdownRef}
-          className="fixed z-[9999] bg-[#0b0b0e] border border-[#333333] rounded overflow-hidden"
-          style={{
-            ...(dropUp ? { bottom: position.bottom } : { top: position.top }),
-            left: position.left,
-            width: position.width,
-            boxShadow: "0 4px 16px rgba(34, 34, 34, 0.5)",
-          }}
-        >
-          {/* Options list */}
-          <div className="max-h-64 overflow-y-auto">
-            {options.length === 0 ? (
-              <div className="px-3 py-2 text-sm text-text-muted">No options</div>
-            ) : (
-              options.map((option) => {
-                const isSelected = selected === option.value
-                return (
-                  <button
-                    key={option.value}
-                    type="button"
-                    className={cn(
-                      "w-full flex items-center gap-2 px-3 text-sm text-left transition-colors cursor-pointer",
-                      "text-text-secondary hover:bg-[#222222] hover:text-text-primary",
-                      isSelected && "text-text-primary bg-[#1a1a1a]",
-                      option.sublabel ? "py-2" : "py-2"
-                    )}
-                    onClick={() => selectOption(option.value)}
-                  >
-                    {/* Radio indicator */}
-                    <div
+      {open &&
+        typeof document !== "undefined" &&
+        createPortal(
+          <div
+            ref={dropdownRef}
+            className="fixed z-[9999] bg-[#0b0b0e] border border-[#333333] rounded overflow-hidden"
+            style={{
+              ...(dropUp ? { bottom: position.bottom } : { top: position.top }),
+              left: position.left,
+              width: position.width,
+              boxShadow: "0 4px 16px rgba(34, 34, 34, 0.5)",
+            }}
+          >
+            {/* Options list */}
+            <div className="max-h-64 overflow-y-auto">
+              {options.length === 0 ? (
+                <div className="px-3 py-2 text-sm text-text-muted">No options</div>
+              ) : (
+                options.map((option) => {
+                  const isSelected = selected === option.value
+                  return (
+                    <button
+                      key={option.value}
+                      type="button"
                       className={cn(
-                        "w-4 h-4 rounded-full border flex items-center justify-center flex-shrink-0",
-                        isSelected
-                          ? "border-accent"
-                          : "border-[#444444]"
+                        "w-full flex items-center gap-2 px-3 text-sm text-left transition-colors cursor-pointer",
+                        "text-text-secondary hover:bg-[#222222] hover:text-text-primary",
+                        isSelected && "text-text-primary bg-[#1a1a1a]",
+                        option.sublabel ? "py-2" : "py-2"
                       )}
+                      onClick={() => selectOption(option.value)}
                     >
-                      {isSelected && (
-                        <div className="w-2 h-2 rounded-full bg-accent" />
-                      )}
-                    </div>
+                      {/* Radio indicator */}
+                      <div
+                        className={cn(
+                          "w-4 h-4 rounded-full border flex items-center justify-center flex-shrink-0",
+                          isSelected ? "border-accent" : "border-[#444444]"
+                        )}
+                      >
+                        {isSelected && <div className="w-2 h-2 rounded-full bg-accent" />}
+                      </div>
 
-                    {/* Label and sublabel */}
-                    <div className="flex-1 min-w-0">
-                      <span className="block truncate">{option.label}</span>
-                      {option.sublabel && (
-                        <span className="block text-xs text-text-muted truncate">{option.sublabel}</span>
-                      )}
-                    </div>
-                  </button>
-                )
-              })
-            )}
-          </div>
-        </div>,
-        document.body
-      )}
+                      {/* Label and sublabel */}
+                      <div className="flex-1 min-w-0">
+                        <span className="block truncate">{option.label}</span>
+                        {option.sublabel && (
+                          <span className="block text-xs text-text-muted truncate">
+                            {option.sublabel}
+                          </span>
+                        )}
+                      </div>
+                    </button>
+                  )
+                })
+              )}
+            </div>
+          </div>,
+          document.body
+        )}
     </>
   )
 }

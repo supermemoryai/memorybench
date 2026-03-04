@@ -1,9 +1,13 @@
 import { buildContextString } from "../types/prompts"
 
-export function buildDefaultAnswerPrompt(question: string, context: unknown[], questionDate?: string): string {
-    const contextStr = buildContextString(context)
+export function buildDefaultAnswerPrompt(
+  question: string,
+  context: unknown[],
+  questionDate?: string
+): string {
+  const contextStr = buildContextString(context)
 
-    return `You are a question-answering system. Based on the retrieved context below, answer the question.
+  return `You are a question-answering system. Based on the retrieved context below, answer the question.
 
 Question: ${question}
 Question Date: ${questionDate || "Not specified"}
@@ -55,23 +59,23 @@ Respond with ONLY a JSON object:
 {"score": 0, "label": "incorrect", "explanation": "..."} if the response does not satisfy the rubric`
 
 export function getJudgePromptForType(questionType: string): string {
-    const type = questionType.toLowerCase()
+  const type = questionType.toLowerCase()
 
-    if (type.includes("abstention") || type.includes("adversarial")) {
-        return ABSTENTION_JUDGE_PROMPT
-    }
+  if (type.includes("abstention") || type.includes("adversarial")) {
+    return ABSTENTION_JUDGE_PROMPT
+  }
 
-    if (type.includes("temporal")) {
-        return TEMPORAL_JUDGE_PROMPT
-    }
+  if (type.includes("temporal")) {
+    return TEMPORAL_JUDGE_PROMPT
+  }
 
-    if (type.includes("update") || type.includes("changing")) {
-        return KNOWLEDGE_UPDATE_JUDGE_PROMPT
-    }
+  if (type.includes("update") || type.includes("changing")) {
+    return KNOWLEDGE_UPDATE_JUDGE_PROMPT
+  }
 
-    if (type.includes("preference")) {
-        return PREFERENCE_JUDGE_PROMPT
-    }
+  if (type.includes("preference")) {
+    return PREFERENCE_JUDGE_PROMPT
+  }
 
-    return DEFAULT_JUDGE_PROMPT
+  return DEFAULT_JUDGE_PROMPT
 }

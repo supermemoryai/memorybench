@@ -1,104 +1,108 @@
 import type { ProviderPrompts } from "../../types/prompts"
 
 interface SupermemoryChunk {
-    content: string
-    position: number
+  content: string
+  position: number
 }
 
 interface SupermemoryResult {
-    memory?: string
-    chunk?: string
-    chunks?: SupermemoryChunk[]
-    metadata?: {
-        temporalContext?: {
-            documentDate?: string
-            eventDate?: string | string[]
-        }
+  memory?: string
+  chunk?: string
+  chunks?: SupermemoryChunk[]
+  metadata?: {
+    temporalContext?: {
+      documentDate?: string
+      eventDate?: string | string[]
     }
+  }
 }
 
 function deduplicateAndSortChunks(chunks: SupermemoryChunk[]): SupermemoryChunk[] {
-    const uniqueChunks = chunks.filter((chunk, index, self) =>
-        index === self.findIndex((c) => c.content === chunk.content)
-    )
-    return uniqueChunks.sort((a, b) => a.position - b.position)
+  const uniqueChunks = chunks.filter(
+    (chunk, index, self) => index === self.findIndex((c) => c.content === chunk.content)
+  )
+  return uniqueChunks.sort((a, b) => a.position - b.position)
 }
 
 function buildSupermemoryContext(context: unknown[]): string {
-    const results = context as SupermemoryResult[]
-    const allChunks: SupermemoryChunk[] = []
+  const results = context as SupermemoryResult[]
+  const allChunks: SupermemoryChunk[] = []
 
-    for (let i = 0; i < results.length; i++) {
-        const result = results[i]
+  for (let i = 0; i < results.length; i++) {
+    const result = results[i]
 
-        const chunks = result.chunks || []
-        for (const chunk of chunks) {
-            allChunks.push({
-                content: chunk.content,
-                position: chunk.position ?? 0,
-            })
-        }
-
-        if (result.chunk && typeof result.chunk === "string" && result.chunk.trim()) {
-            allChunks.push({
-                content: result.chunk,
-                position: i,
-            })
-        }
+    const chunks = result.chunks || []
+    for (const chunk of chunks) {
+      allChunks.push({
+        content: chunk.content,
+        position: chunk.position ?? 0,
+      })
     }
 
-    const deduplicatedChunks = deduplicateAndSortChunks(allChunks)
+    if (result.chunk && typeof result.chunk === "string" && result.chunk.trim()) {
+      allChunks.push({
+        content: result.chunk,
+        position: i,
+      })
+    }
+  }
 
-    const memoriesSection = results
-        .map((result, i) => {
-            const memory = result.memory || ""
-            const temporalContext = result.metadata?.temporalContext
-            const documentDate = temporalContext?.documentDate
-            const eventDate = temporalContext?.eventDate
+  const deduplicatedChunks = deduplicateAndSortChunks(allChunks)
 
-            const memoryParts = [`Result ${i + 1}:`, memory]
+  const memoriesSection = results
+    .map((result, i) => {
+      const memory = result.memory || ""
+      const temporalContext = result.metadata?.temporalContext
+      const documentDate = temporalContext?.documentDate
+      const eventDate = temporalContext?.eventDate
 
-            if (documentDate || eventDate) {
-                const temporalInfo: string[] = []
-                if (documentDate) temporalInfo.push(`documentDate: ${documentDate}`)
-                if (eventDate) {
-                    const eventDates = Array.isArray(eventDate) ? eventDate : [eventDate]
-                    temporalInfo.push(`eventDate: ${eventDates.join(", ")}`)
-                }
-                memoryParts.push(`Temporal Context: ${temporalInfo.join(" | ")}`)
-            }
+      const memoryParts = [`Result ${i + 1}:`, memory]
 
-            return memoryParts.join("\n")
-        })
-        .join("\n\n---\n\n")
+      if (documentDate || eventDate) {
+        const temporalInfo: string[] = []
+        if (documentDate) temporalInfo.push(`documentDate: ${documentDate}`)
+        if (eventDate) {
+          const eventDates = Array.isArray(eventDate) ? eventDate : [eventDate]
+          temporalInfo.push(`eventDate: ${eventDates.join(", ")}`)
+        }
+        memoryParts.push(`Temporal Context: ${temporalInfo.join(" | ")}`)
+      }
 
-    const chunksSection = deduplicatedChunks.length > 0
-        ? `\n\n=== DEDUPLICATED CHUNKS ===\n${deduplicatedChunks.map(chunk => chunk.content).join("\n\n---\n\n")}`
-        : ""
+      return memoryParts.join("\n")
+    })
+    .join("\n\n---\n\n")
 
-    return memoriesSection + chunksSection
+  const chunksSection =
+    deduplicatedChunks.length > 0
+      ? `\n\n=== DEDUPLICATED CHUNKS ===\n${deduplicatedChunks.map((chunk) => chunk.content).join("\n\n---\n\n")}`
+      : ""
+
+  return memoriesSection + chunksSection
 }
 
-export function buildSupermemoryAnswerPrompt(question: string, context: unknown[], questionDate?: string): string {
+export function buildSupermemoryAnswerPrompt(
+  question: string,
+  context: unknown[],
+  questionDate?: string
+): string {
+  const results = context as SupermemoryResult[]
+  const retrievedContext = buildSupermemoryContext(context)
 
-    const results = context as SupermemoryResult[]
-    const retrievedContext = buildSupermemoryContext(context)
+  // console.log(`\n=== DEBUG: Processing ${results.length} search results ===`)
+  // for (let i = 0; i < Math.min(results.length, 3); i++) {
+  //     const r = results[i]
+  //     console.log(`Result ${i + 1}:`)
+  //     console.log(`  - memory: ${r.memory?.substring(0, 80)}...`)
+  //     console.log(`  - chunk (singular): ${r.chunk ? r.chunk.substring(0, 80) + "..." : "EMPTY"}`)
+  //     console.log(`  - chunks (array): ${r.chunks?.length || 0} items`)
+  //     if (r.chunks && r.chunks.length > 0) {
+  //         console.log(`    First chunk: ${r.chunks[0].content?.substring(0, 80)}...`)
+  //     }
+  // }
+  // console.log(`\n=== Total chunks extracted: ${retrievedContext.includes("DEDUPLICATED CHUNKS") ? "YES" : "NO CHUNKS"} ===`)
+  // console.log("Retrieved context preview:", retrievedContext)
 
-    // console.log(`\n=== DEBUG: Processing ${results.length} search results ===`)
-    // for (let i = 0; i < Math.min(results.length, 3); i++) {
-    //     const r = results[i]
-    //     console.log(`Result ${i + 1}:`)
-    //     console.log(`  - memory: ${r.memory?.substring(0, 80)}...`)
-    //     console.log(`  - chunk (singular): ${r.chunk ? r.chunk.substring(0, 80) + "..." : "EMPTY"}`)
-    //     console.log(`  - chunks (array): ${r.chunks?.length || 0} items`)
-    //     if (r.chunks && r.chunks.length > 0) {
-    //         console.log(`    First chunk: ${r.chunks[0].content?.substring(0, 80)}...`)
-    //     }
-    // }
-    // console.log(`\n=== Total chunks extracted: ${retrievedContext.includes("DEDUPLICATED CHUNKS") ? "YES" : "NO CHUNKS"} ===`)
-    // console.log("Retrieved context preview:", retrievedContext)
-
-    return `You are a question-answering system. Based on the retrieved context below, answer the question.
+  return `You are a question-answering system. Based on the retrieved context below, answer the question.
 
 Question: ${question}
 Question Date: ${questionDate || "Not specified"}
@@ -148,11 +152,11 @@ Reasoning:
 [Your step-by-step reasoning process here]
 
 Answer:
-[Your final answer here]`;
+[Your final answer here]`
 }
 
 export const SUPERMEMORY_PROMPTS: ProviderPrompts = {
-    answerPrompt: buildSupermemoryAnswerPrompt,
+  answerPrompt: buildSupermemoryAnswerPrompt,
 }
 
 export default SUPERMEMORY_PROMPTS

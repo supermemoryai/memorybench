@@ -9,7 +9,7 @@ const DB_PATH = "./data/leaderboard.db"
 // Ensure data directory exists
 const dbDir = dirname(DB_PATH)
 if (!existsSync(dbDir)) {
-    mkdirSync(dbDir, { recursive: true })
+  mkdirSync(dbDir, { recursive: true })
 }
 
 // Create SQLite connection using Bun's native driver
@@ -23,7 +23,7 @@ export const db = drizzle(sqlite, { schema })
 
 // Initialize database tables
 export function initDatabase() {
-    sqlite.exec(`
+  sqlite.exec(`
         CREATE TABLE IF NOT EXISTS leaderboard_entries (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             run_id TEXT NOT NULL,
@@ -45,7 +45,7 @@ export function initDatabase() {
         )
     `)
 
-    sqlite.exec(`
+  sqlite.exec(`
         CREATE UNIQUE INDEX IF NOT EXISTS provider_benchmark_version_idx
         ON leaderboard_entries (provider, benchmark, version)
     `)

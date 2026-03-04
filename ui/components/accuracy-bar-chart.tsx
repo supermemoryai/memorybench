@@ -27,7 +27,7 @@ export function AccuracyBarChart({ data, providers }: AccuracyBarChartProps) {
   // Build color map for providers (excluding supermemory from default color assignment)
   const colorMap = new Map<string, string>()
   let colorIndex = 0
-  providers.forEach(provider => {
+  providers.forEach((provider) => {
     const lowerProvider = provider.toLowerCase()
     if (PROVIDER_COLORS[lowerProvider]) {
       colorMap.set(provider, PROVIDER_COLORS[lowerProvider])
@@ -58,12 +58,9 @@ export function AccuracyBarChart({ data, providers }: AccuracyBarChartProps) {
     <div className="w-full h-full flex flex-col">
       {/* Legend on top right */}
       <div className="flex flex-wrap gap-4 justify-end mb-2" style={{ minHeight: legendHeight }}>
-        {providers.map(provider => (
+        {providers.map((provider) => (
           <div key={provider} className="flex items-center gap-2">
-            <div
-              className="w-3 h-3 rounded"
-              style={{ backgroundColor: colorMap.get(provider) }}
-            />
+            <div className="w-3 h-3 rounded" style={{ backgroundColor: colorMap.get(provider) }} />
             <span className="text-xs text-text-secondary capitalize">{provider}</span>
           </div>
         ))}
@@ -79,7 +76,7 @@ export function AccuracyBarChart({ data, providers }: AccuracyBarChartProps) {
           className="font-mono"
         >
           {/* Y-axis labels and dotted lines */}
-          {[0, 20, 40, 60, 80, 100].map(value => (
+          {[0, 20, 40, 60, 80, 100].map((value) => (
             <g key={value}>
               {/* Label */}
               <text
@@ -109,9 +106,9 @@ export function AccuracyBarChart({ data, providers }: AccuracyBarChartProps) {
             const groupX = yAxisWidth + categoryIndex * (groupWidth + groupGap) + groupGap / 2
 
             // Find the best (highest) accuracy for this category and its FIRST index
-            const accuracies = category.values.map(v => v.accuracy ?? 0)
+            const accuracies = category.values.map((v) => v.accuracy ?? 0)
             const bestAccuracy = Math.max(...accuracies)
-            const firstBestIndex = accuracies.findIndex(a => a === bestAccuracy)
+            const firstBestIndex = accuracies.findIndex((a) => a === bestAccuracy)
 
             return (
               <g key={category.type}>
@@ -131,15 +128,16 @@ export function AccuracyBarChart({ data, providers }: AccuracyBarChartProps) {
                   // Create path for bar with only top corners rounded
                   const radius = 6
                   const r = Math.min(radius, barWidth / 2, barHeight / 2)
-                  const barPath = barHeight > 0
-                    ? `M ${barX} ${barY + barHeight}
+                  const barPath =
+                    barHeight > 0
+                      ? `M ${barX} ${barY + barHeight}
                        L ${barX} ${barY + r}
                        Q ${barX} ${barY} ${barX + r} ${barY}
                        L ${barX + barWidth - r} ${barY}
                        Q ${barX + barWidth} ${barY} ${barX + barWidth} ${barY + r}
                        L ${barX + barWidth} ${barY + barHeight}
                        Z`
-                    : ""
+                      : ""
 
                   return (
                     <g key={item.provider}>
@@ -191,6 +189,6 @@ function formatCategoryLabel(type: string): string {
   // Convert kebab-case to Title Case and handle multi-line
   return type
     .split("-")
-    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
     .join(" ")
 }

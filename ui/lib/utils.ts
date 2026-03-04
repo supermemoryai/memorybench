@@ -34,8 +34,11 @@ export function formatDate(date: string): string {
 
   // This year - show month day + time
   if (d.getFullYear() === now.getFullYear()) {
-    return d.toLocaleDateString("en-US", { month: "short", day: "numeric" }) +
-      " " + d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })
+    return (
+      d.toLocaleDateString("en-US", { month: "short", day: "numeric" }) +
+      " " +
+      d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })
+    )
   }
 
   // Different year - show full date
@@ -65,7 +68,10 @@ export function getStatusColor(status: string): string {
   }
 }
 
-export function calculateAccuracy(summary: { total: number; evaluated: number } & Record<string, number>, questions?: Record<string, any>): number | null {
+export function calculateAccuracy(
+  summary: { total: number; evaluated: number } & Record<string, number>,
+  questions?: Record<string, any>
+): number | null {
   if (!questions || summary.evaluated === 0) return null
 
   const evaluated = Object.values(questions).filter(

@@ -29,7 +29,7 @@ export function FilterBar({
   filters,
   onClearAll,
 }: FilterBarProps) {
-  const hasActiveFilters = searchValue || filters.some(f => f.selected.length > 0)
+  const hasActiveFilters = searchValue || filters.some((f) => f.selected.length > 0)
   const displayCount = filteredCount !== undefined ? filteredCount : totalCount
 
   return (
@@ -62,7 +62,11 @@ export function FilterBar({
               stroke="currentColor"
               strokeWidth={2}
             >
-              <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+              />
             </svg>
             <input
               type="text"

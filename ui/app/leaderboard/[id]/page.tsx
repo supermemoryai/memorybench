@@ -115,7 +115,9 @@ export default function LeaderboardEntryPage() {
   return (
     <div className="animate-fade-in">
       <div className="flex items-center gap-2 text-sm text-text-secondary mb-4">
-        <Link href="/leaderboard" className="hover:text-text-primary">Leaderboard</Link>
+        <Link href="/leaderboard" className="hover:text-text-primary">
+          Leaderboard
+        </Link>
         <span>/</span>
         <span className="text-text-primary font-mono">{entry.version}</span>
       </div>
@@ -136,8 +138,7 @@ export default function LeaderboardEntryPage() {
             <span className="font-mono">{entry.runId}</span>
           </span>
           <span>
-            <span className="text-text-muted">added:</span>{" "}
-            {formattedDate}
+            <span className="text-text-muted">added:</span> {formattedDate}
           </span>
         </div>
         {entry.notes && (
@@ -148,7 +149,7 @@ export default function LeaderboardEntryPage() {
       </div>
 
       <div className="flex gap-1 border-b border-border mb-6">
-        {tabs.map(tab => (
+        {tabs.map((tab) => (
           <button
             key={tab}
             className={cn(
@@ -175,9 +176,7 @@ export default function LeaderboardEntryPage() {
         </div>
       )}
 
-      {activeTab === "results" && (
-        <EvaluationList evaluations={evaluations} />
-      )}
+      {activeTab === "results" && <EvaluationList evaluations={evaluations} />}
 
       {activeTab === "code" && (
         <CodeTab

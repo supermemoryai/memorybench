@@ -1,10 +1,7 @@
 import type { Config } from "tailwindcss"
 
 const config: Config = {
-  content: [
-    "./app/**/*.{js,ts,jsx,tsx,mdx}",
-    "./components/**/*.{js,ts,jsx,tsx,mdx}",
-  ],
+  content: ["./app/**/*.{js,ts,jsx,tsx,mdx}", "./components/**/*.{js,ts,jsx,tsx,mdx}"],
   theme: {
     extend: {
       colors: {
@@ -51,7 +48,7 @@ const config: Config = {
         "fade-in": "fadeIn 0.3s ease-out",
         "slide-up": "slideUp 0.3s ease-out",
         "slide-in-right": "slideInRight 0.2s ease-out",
-        "indeterminate": "indeterminate 1.5s ease-in-out infinite",
+        indeterminate: "indeterminate 1.5s ease-in-out infinite",
       },
       keyframes: {
         fadeIn: {

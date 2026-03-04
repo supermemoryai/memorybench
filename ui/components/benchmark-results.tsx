@@ -38,10 +38,7 @@ export function StatCard({ label, value, subtext, mono }: StatCardProps) {
     <div className="card">
       <div className="text-xs text-text-muted uppercase tracking-wide mb-1">{label}</div>
       <div
-        className={cn(
-          "text-lg font-medium text-text-primary truncate",
-          mono && "font-mono"
-        )}
+        className={cn("text-lg font-medium text-text-primary truncate", mono && "font-mono")}
         title={typeof value === "string" ? value : undefined}
       >
         {value}
@@ -124,6 +121,7 @@ export interface RetrievalStats {
 export interface LatencyTableProps {
   latency?: {
     ingest?: LatencyStats
+    indexing?: LatencyStats
     search?: LatencyStats
     answer?: LatencyStats
     evaluate?: LatencyStats
@@ -141,31 +139,59 @@ export function LatencyTable({ latency }: LatencyTableProps) {
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-border">
-              <th className="text-left py-2 px-3 text-text-muted font-medium uppercase text-xs">phase</th>
-              <th className="text-right py-2 px-3 text-text-muted font-medium uppercase text-xs">min</th>
-              <th className="text-right py-2 px-3 text-text-muted font-medium uppercase text-xs">max</th>
-              <th className="text-right py-2 px-3 text-text-muted font-medium uppercase text-xs">mean</th>
-              <th className="text-right py-2 px-3 text-text-muted font-medium uppercase text-xs">median</th>
-              <th className="text-right py-2 px-3 text-text-muted font-medium uppercase text-xs">p95</th>
-              <th className="text-right py-2 px-3 text-text-muted font-medium uppercase text-xs">p99</th>
+              <th className="text-left py-2 px-3 text-text-muted font-medium uppercase text-xs">
+                phase
+              </th>
+              <th className="text-right py-2 px-3 text-text-muted font-medium uppercase text-xs">
+                min
+              </th>
+              <th className="text-right py-2 px-3 text-text-muted font-medium uppercase text-xs">
+                max
+              </th>
+              <th className="text-right py-2 px-3 text-text-muted font-medium uppercase text-xs">
+                mean
+              </th>
+              <th className="text-right py-2 px-3 text-text-muted font-medium uppercase text-xs">
+                median
+              </th>
+              <th className="text-right py-2 px-3 text-text-muted font-medium uppercase text-xs">
+                p95
+              </th>
+              <th className="text-right py-2 px-3 text-text-muted font-medium uppercase text-xs">
+                p99
+              </th>
             </tr>
           </thead>
           <tbody>
-            {(["ingest", "search", "answer", "evaluate", "total"] as const).map(phase => {
-              const stats = latency[phase]
-              if (!stats) return null
-              return (
-                <tr key={phase} className="border-b border-border/50">
-                  <td className="py-2 px-3 text-text-primary capitalize">{phase}</td>
-                  <td className="py-2 px-3 text-right font-mono text-text-secondary">{stats.min}</td>
-                  <td className="py-2 px-3 text-right font-mono text-text-secondary">{stats.max}</td>
-                  <td className="py-2 px-3 text-right font-mono text-text-secondary">{stats.mean}</td>
-                  <td className="py-2 px-3 text-right font-mono text-text-primary">{stats.median}</td>
-                  <td className="py-2 px-3 text-right font-mono text-text-secondary">{stats.p95}</td>
-                  <td className="py-2 px-3 text-right font-mono text-text-secondary">{stats.p99}</td>
-                </tr>
-              )
-            })}
+            {(["ingest", "indexing", "search", "answer", "evaluate", "total"] as const).map(
+              (phase) => {
+                const stats = latency[phase]
+                if (!stats) return null
+                return (
+                  <tr key={phase} className="border-b border-border/50">
+                    <td className="py-2 px-3 text-text-primary capitalize">{phase}</td>
+                    <td className="py-2 px-3 text-right font-mono text-text-secondary">
+                      {stats.min}
+                    </td>
+                    <td className="py-2 px-3 text-right font-mono text-text-secondary">
+                      {stats.max}
+                    </td>
+                    <td className="py-2 px-3 text-right font-mono text-text-secondary">
+                      {stats.mean}
+                    </td>
+                    <td className="py-2 px-3 text-right font-mono text-text-primary">
+                      {stats.median}
+                    </td>
+                    <td className="py-2 px-3 text-right font-mono text-text-secondary">
+                      {stats.p95}
+                    </td>
+                    <td className="py-2 px-3 text-right font-mono text-text-secondary">
+                      {stats.p99}
+                    </td>
+                  </tr>
+                )
+              }
+            )}
           </tbody>
         </table>
       </div>
@@ -193,8 +219,12 @@ export function RetrievalMetrics({ retrieval, byQuestionType }: RetrievalMetrics
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
         <div className="bg-bg-primary p-3 rounded border border-border">
-          <div className="text-xs text-text-muted uppercase tracking-wide mb-1">Hit@{retrieval.k}</div>
-          <div className="text-xl font-mono text-text-primary">{(retrieval.hitAtK * 100).toFixed(0)}%</div>
+          <div className="text-xs text-text-muted uppercase tracking-wide mb-1">
+            Hit@{retrieval.k}
+          </div>
+          <div className="text-xl font-mono text-text-primary">
+            {(retrieval.hitAtK * 100).toFixed(0)}%
+          </div>
           <div className="text-xs text-text-secondary">found relevant</div>
         </div>
         <div className="bg-bg-primary p-3 rounded border border-border">
@@ -208,8 +238,12 @@ export function RetrievalMetrics({ retrieval, byQuestionType }: RetrievalMetrics
           <div className="text-xs text-text-secondary">ranking quality</div>
         </div>
         <div className="bg-bg-primary p-3 rounded border border-border">
-          <div className="text-xs text-text-muted uppercase tracking-wide mb-1">F1@{retrieval.k}</div>
-          <div className="text-xl font-mono text-text-primary">{(retrieval.f1AtK * 100).toFixed(0)}%</div>
+          <div className="text-xs text-text-muted uppercase tracking-wide mb-1">
+            F1@{retrieval.k}
+          </div>
+          <div className="text-xl font-mono text-text-primary">
+            {(retrieval.f1AtK * 100).toFixed(0)}%
+          </div>
           <div className="text-xs text-text-secondary">precision-recall balance</div>
         </div>
       </div>
@@ -218,52 +252,64 @@ export function RetrievalMetrics({ retrieval, byQuestionType }: RetrievalMetrics
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-border">
-              <th className="text-left py-2 px-3 text-text-muted font-medium uppercase text-xs">metric</th>
-              <th className="text-right py-2 px-3 text-text-muted font-medium uppercase text-xs">overall</th>
+              <th className="text-left py-2 px-3 text-text-muted font-medium uppercase text-xs">
+                metric
+              </th>
+              <th className="text-right py-2 px-3 text-text-muted font-medium uppercase text-xs">
+                overall
+              </th>
               {questionTypes.map(([type]) => (
-                <th key={type} className="text-right py-2 px-3 text-text-muted font-medium uppercase text-xs">
+                <th
+                  key={type}
+                  className="text-right py-2 px-3 text-text-muted font-medium uppercase text-xs"
+                >
                   {type.replace(/[-_]/g, " ")}
                 </th>
               ))}
             </tr>
           </thead>
           <tbody>
-            {(["hitAtK", "precisionAtK", "recallAtK", "f1AtK", "mrr", "ndcg"] as const).map(metric => {
-              const labels: Record<string, string> = {
-                hitAtK: `Hit@${retrieval.k}`,
-                precisionAtK: "Precision",
-                recallAtK: "Recall",
-                f1AtK: "F1",
-                mrr: "MRR",
-                ndcg: "NDCG"
-              }
-              const tooltips: Record<string, string> = {
-                hitAtK: "found at least one relevant result",
-                precisionAtK: "relevant results out of retrieved",
-                recallAtK: "found relevant content",
-                f1AtK: "precision-recall balance",
-                mrr: "mean reciprocal rank",
-                ndcg: "ranking quality score"
-              }
-              const isPercentage = ["hitAtK", "precisionAtK", "recallAtK", "f1AtK"].includes(metric)
-              const format = (v: number) => isPercentage ? `${(v * 100).toFixed(1)}%` : v.toFixed(3)
+            {(["hitAtK", "precisionAtK", "recallAtK", "f1AtK", "mrr", "ndcg"] as const).map(
+              (metric) => {
+                const labels: Record<string, string> = {
+                  hitAtK: `Hit@${retrieval.k}`,
+                  precisionAtK: "Precision",
+                  recallAtK: "Recall",
+                  f1AtK: "F1",
+                  mrr: "MRR",
+                  ndcg: "NDCG",
+                }
+                const tooltips: Record<string, string> = {
+                  hitAtK: "found at least one relevant result",
+                  precisionAtK: "relevant results out of retrieved",
+                  recallAtK: "found relevant content",
+                  f1AtK: "precision-recall balance",
+                  mrr: "mean reciprocal rank",
+                  ndcg: "ranking quality score",
+                }
+                const isPercentage = ["hitAtK", "precisionAtK", "recallAtK", "f1AtK"].includes(
+                  metric
+                )
+                const format = (v: number) =>
+                  isPercentage ? `${(v * 100).toFixed(1)}%` : v.toFixed(3)
 
-              return (
-                <tr key={metric} className="border-b border-border/50">
-                  <td className="py-2 px-3 text-text-primary">
-                    <Tooltip text={tooltips[metric]}>{labels[metric]}</Tooltip>
-                  </td>
-                  <td className="py-2 px-3 text-right font-mono text-text-primary">
-                    {format(retrieval[metric])}
-                  </td>
-                  {questionTypes.map(([type, stats]) => (
-                    <td key={type} className="py-2 px-3 text-right font-mono text-text-secondary">
-                      {stats.retrieval ? format(stats.retrieval[metric]) : "—"}
+                return (
+                  <tr key={metric} className="border-b border-border/50">
+                    <td className="py-2 px-3 text-text-primary">
+                      <Tooltip text={tooltips[metric]}>{labels[metric]}</Tooltip>
                     </td>
-                  ))}
-                </tr>
-              )
-            })}
+                    <td className="py-2 px-3 text-right font-mono text-text-primary">
+                      {format(retrieval[metric])}
+                    </td>
+                    {questionTypes.map(([type, stats]) => (
+                      <td key={type} className="py-2 px-3 text-right font-mono text-text-secondary">
+                        {stats.retrieval ? format(stats.retrieval[metric]) : "—"}
+                      </td>
+                    ))}
+                  </tr>
+                )
+              }
+            )}
           </tbody>
         </table>
       </div>
@@ -295,7 +341,7 @@ export function EvaluationList({ evaluations, onViewDetails }: EvaluationListPro
 
   const questionTypes = useMemo(() => {
     const counts: Record<string, number> = {}
-    evaluations.forEach(e => {
+    evaluations.forEach((e) => {
       const type = e.questionType || "unknown"
       counts[type] = (counts[type] || 0) + 1
     })
@@ -307,11 +353,11 @@ export function EvaluationList({ evaluations, onViewDetails }: EvaluationListPro
   }, [evaluations])
 
   const failureCount = useMemo(() => {
-    return evaluations.filter(e => e.label === "incorrect" || e.score === 0).length
+    return evaluations.filter((e) => e.label === "incorrect" || e.score === 0).length
   }, [evaluations])
 
   const filtered = useMemo(() => {
-    return evaluations.filter(e => {
+    return evaluations.filter((e) => {
       if (showFailuresOnly && e.label !== "incorrect" && e.score !== 0) {
         return false
       }
@@ -338,11 +384,7 @@ export function EvaluationList({ evaluations, onViewDetails }: EvaluationListPro
   const hasActiveFilters = search || selectedTypes.length > 0 || showFailuresOnly
 
   if (evaluations.length === 0) {
-    return (
-      <div className="text-center py-8 text-text-secondary">
-        No results available
-      </div>
-    )
+    return <div className="text-center py-8 text-text-secondary">No results available</div>
   }
 
   return (
@@ -350,7 +392,8 @@ export function EvaluationList({ evaluations, onViewDetails }: EvaluationListPro
       <div className="mb-4">
         <div className="flex items-center justify-between text-sm px-1 mb-2">
           <span className="text-text-secondary">
-            Showing {filtered.length} of {evaluations.length} {evaluations.length === 1 ? "result" : "results"}
+            Showing {filtered.length} of {evaluations.length}{" "}
+            {evaluations.length === 1 ? "result" : "results"}
           </span>
           <button
             type="button"
@@ -378,7 +421,11 @@ export function EvaluationList({ evaluations, onViewDetails }: EvaluationListPro
                 stroke="currentColor"
                 strokeWidth={2}
               >
-                <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                />
               </svg>
               <input
                 type="text"
@@ -411,10 +458,12 @@ export function EvaluationList({ evaluations, onViewDetails }: EvaluationListPro
             onClick={() => setShowFailuresOnly(!showFailuresOnly)}
           >
             <span>Failures</span>
-            <span className={cn(
-              "text-xs px-1.5 py-0.5 rounded",
-              showFailuresOnly ? "bg-status-error/20" : "bg-bg-elevated"
-            )}>
+            <span
+              className={cn(
+                "text-xs px-1.5 py-0.5 rounded",
+                showFailuresOnly ? "bg-status-error/20" : "bg-bg-elevated"
+              )}
+            >
               {failureCount}
             </span>
           </button>
@@ -463,10 +512,12 @@ export function EvaluationList({ evaluations, onViewDetails }: EvaluationListPro
                     {evaluation.question || evaluation.groundTruth}
                   </span>
 
-                  <span className={cn(
-                    "text-sm font-medium flex-shrink-0",
-                    isCorrect ? "text-status-success" : "text-status-error"
-                  )}>
+                  <span
+                    className={cn(
+                      "text-sm font-medium flex-shrink-0",
+                      isCorrect ? "text-status-success" : "text-status-error"
+                    )}
+                  >
                     {evaluation.label}
                   </span>
 
@@ -497,26 +548,36 @@ export function EvaluationList({ evaluations, onViewDetails }: EvaluationListPro
                 </div>
 
                 {isExpanded && (
-                  <div className={cn(
-                    "px-4 py-4 space-y-4 bg-bg-primary border-t border-border overflow-hidden",
-                    !isLast && "border-b border-border"
-                  )}>
+                  <div
+                    className={cn(
+                      "px-4 py-4 space-y-4 bg-bg-primary border-t border-border overflow-hidden",
+                      !isLast && "border-b border-border"
+                    )}
+                  >
                     {evaluation.question && (
                       <div className="min-w-0">
-                        <div className="text-xs text-text-muted uppercase tracking-wide mb-1">Question</div>
-                        <div className="text-sm text-text-primary break-words">{evaluation.question}</div>
+                        <div className="text-xs text-text-muted uppercase tracking-wide mb-1">
+                          Question
+                        </div>
+                        <div className="text-sm text-text-primary break-words">
+                          {evaluation.question}
+                        </div>
                       </div>
                     )}
 
                     <div className="grid grid-cols-2 gap-4 min-w-0">
                       <div className="min-w-0">
-                        <div className="text-xs text-text-muted uppercase tracking-wide mb-1">Ground Truth</div>
+                        <div className="text-xs text-text-muted uppercase tracking-wide mb-1">
+                          Ground Truth
+                        </div>
                         <div className="text-sm text-text-primary font-mono bg-bg-elevated p-2 rounded break-words">
                           {evaluation.groundTruth}
                         </div>
                       </div>
                       <div className="min-w-0">
-                        <div className="text-xs text-text-muted uppercase tracking-wide mb-1">Model Answer</div>
+                        <div className="text-xs text-text-muted uppercase tracking-wide mb-1">
+                          Model Answer
+                        </div>
                         <div className="text-sm text-text-primary font-mono bg-bg-elevated p-2 rounded break-words">
                           {evaluation.hypothesis || "—"}
                         </div>
@@ -525,8 +586,12 @@ export function EvaluationList({ evaluations, onViewDetails }: EvaluationListPro
 
                     {evaluation.explanation && (
                       <div className="min-w-0">
-                        <div className="text-xs text-text-muted uppercase tracking-wide mb-1">Explanation</div>
-                        <div className="text-sm text-text-secondary break-words">{evaluation.explanation}</div>
+                        <div className="text-xs text-text-muted uppercase tracking-wide mb-1">
+                          Explanation
+                        </div>
+                        <div className="text-sm text-text-secondary break-words">
+                          {evaluation.explanation}
+                        </div>
                       </div>
                     )}
                   </div>

@@ -9,10 +9,7 @@ interface CompareActionsMenuProps {
   onDelete: () => void
 }
 
-export function CompareActionsMenu({
-  compareId,
-  onDelete,
-}: CompareActionsMenuProps) {
+export function CompareActionsMenu({ compareId, onDelete }: CompareActionsMenuProps) {
   const [open, setOpen] = useState(false)
   const [position, setPosition] = useState({ top: 0, left: 0 })
 
@@ -64,40 +61,42 @@ export function CompareActionsMenu({
       </button>
 
       {/* Dropdown menu */}
-      {open && typeof document !== "undefined" && createPortal(
-        <div
-          ref={dropdownRef}
-          className="fixed z-[9999] w-48 bg-[#0b0b0e] border border-[#333333] rounded overflow-hidden"
-          style={{
-            top: position.top,
-            left: position.left,
-            boxShadow: "0 4px 16px rgba(34, 34, 34, 0.5)",
-          }}
-        >
-          <div className="py-1">
-            <Link
-              href={`/compare/${encodeURIComponent(compareId)}`}
-              className="w-full px-3 py-2 text-sm text-left transition-colors flex items-center gap-2 cursor-pointer text-text-secondary hover:bg-[#222222] hover:text-text-primary"
-              onClick={() => setOpen(false)}
-            >
-              view details
-            </Link>
+      {open &&
+        typeof document !== "undefined" &&
+        createPortal(
+          <div
+            ref={dropdownRef}
+            className="fixed z-[9999] w-48 bg-[#0b0b0e] border border-[#333333] rounded overflow-hidden"
+            style={{
+              top: position.top,
+              left: position.left,
+              boxShadow: "0 4px 16px rgba(34, 34, 34, 0.5)",
+            }}
+          >
+            <div className="py-1">
+              <Link
+                href={`/compare/${encodeURIComponent(compareId)}`}
+                className="w-full px-3 py-2 text-sm text-left transition-colors flex items-center gap-2 cursor-pointer text-text-secondary hover:bg-[#222222] hover:text-text-primary"
+                onClick={() => setOpen(false)}
+              >
+                view details
+              </Link>
 
-            <div className="border-t border-[#333333] my-1" />
+              <div className="border-t border-[#333333] my-1" />
 
-            <button
-              className="w-full px-3 py-2 text-sm text-left transition-colors flex items-center gap-2 cursor-pointer text-status-error hover:bg-[#222222]"
-              onClick={() => {
-                onDelete()
-                setOpen(false)
-              }}
-            >
-              delete
-            </button>
-          </div>
-        </div>,
-        document.body
-      )}
+              <button
+                className="w-full px-3 py-2 text-sm text-left transition-colors flex items-center gap-2 cursor-pointer text-status-error hover:bg-[#222222]"
+                onClick={() => {
+                  onDelete()
+                  setOpen(false)
+                }}
+              >
+                delete
+              </button>
+            </div>
+          </div>,
+          document.body
+        )}
     </>
   )
 }

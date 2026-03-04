@@ -70,9 +70,7 @@ export function DownloadToast({ onDownloadComplete }: DownloadToastProps) {
           </div>
 
           {/* Status text */}
-          <div className="text-xs text-text-secondary">
-            Downloading dataset...
-          </div>
+          <div className="text-xs text-text-secondary">Downloading dataset...</div>
         </div>
       ))}
     </div>

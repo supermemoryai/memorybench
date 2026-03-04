@@ -17,9 +17,6 @@ export function CircularProgress({
   const circumference = 2 * Math.PI * radius
   const offset = circumference - progress * circumference
 
-  // Unique ID for gradient (needed when multiple instances on page)
-  const gradientId = `progress-gradient-${Math.random().toString(36).substr(2, 9)}`
-
   return (
     <svg
       width={size}
@@ -27,14 +24,6 @@ export function CircularProgress({
       viewBox={`0 0 ${size} ${size}`}
       className="transform -rotate-90"
     >
-      <defs>
-        {/* Same gradient as New Run button: rgb(38, 123, 241) → rgb(21, 70, 139) */}
-        <linearGradient id={gradientId} x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="rgb(38, 123, 241)" />
-          <stop offset="100%" stopColor="rgb(21, 70, 139)" />
-        </linearGradient>
-      </defs>
-
       {/* Background circle */}
       <circle
         cx={size / 2}
@@ -46,13 +35,13 @@ export function CircularProgress({
         className="text-[#333333]"
       />
 
-      {/* Progress circle */}
+      {/* Progress circle - using the lighter blue from gradient (top-left color) */}
       <circle
         cx={size / 2}
         cy={size / 2}
         r={radius}
         fill="none"
-        stroke={`url(#${gradientId})`}
+        stroke="rgb(38, 123, 241)"
         strokeWidth={strokeWidth}
         strokeDasharray={circumference}
         strokeDashoffset={offset}

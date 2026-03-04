@@ -9,6 +9,7 @@ import { FilterBar } from "@/components/filter-bar"
 import { DataTable, type Column } from "@/components/data-table"
 import { RunActionsMenu } from "@/components/run-actions-menu"
 import { CircularProgress } from "@/components/circular-progress"
+import { EmptyState, ListIcon } from "@/components/empty-state"
 
 const POLL_INTERVAL = 2000 // 2 seconds
 
@@ -27,7 +28,9 @@ export default function RunsPage() {
 
   // Check if any run is in progress
   const hasRunningRuns = useMemo(() => {
-    return runs.some(r => r.status === "running" || r.status === "pending" || r.status === "initializing")
+    return runs.some(
+      (r) => r.status === "running" || r.status === "pending" || r.status === "initializing"
+    )
   }, [runs])
 
   // Silent refresh (no loading state)
@@ -82,7 +85,7 @@ export default function RunsPage() {
 
     try {
       await deleteRun(runId)
-      setRuns(prev => prev.filter(r => r.runId !== runId))
+      setRuns((prev) => prev.filter((r) => r.runId !== runId))
     } catch (e) {
       alert(e instanceof Error ? e.message : "Failed to delete run")
     }
@@ -120,7 +123,7 @@ export default function RunsPage() {
   // Get unique values for filter options
   const providers = useMemo(() => {
     const counts: Record<string, number> = {}
-    runs.forEach(r => {
+    runs.forEach((r) => {
       counts[r.provider] = (counts[r.provider] || 0) + 1
     })
     return Object.entries(counts).map(([value, count]) => ({
@@ -132,7 +135,7 @@ export default function RunsPage() {
 
   const benchmarks = useMemo(() => {
     const counts: Record<string, number> = {}
-    runs.forEach(r => {
+    runs.forEach((r) => {
       counts[r.benchmark] = (counts[r.benchmark] || 0) + 1
     })
     return Object.entries(counts).map(([value, count]) => ({
@@ -144,7 +147,7 @@ export default function RunsPage() {
 
   const statuses = useMemo(() => {
     const counts: Record<string, number> = {}
-    runs.forEach(r => {
+    runs.forEach((r) => {
       counts[r.status] = (counts[r.status] || 0) + 1
     })
     return Object.entries(counts).map(([value, count]) => ({
@@ -156,7 +159,7 @@ export default function RunsPage() {
 
   // Filter runs
   const filteredRuns = useMemo(() => {
-    return runs.filter(run => {
+    return runs.filter((run) => {
       // Search filter
       if (search) {
         const searchLower = search.toLowerCase()
@@ -187,96 +190,106 @@ export default function RunsPage() {
   }, [runs, search, selectedProviders, selectedBenchmarks, selectedStatuses])
 
   // Build columns
-  const columns: Column<RunSummary>[] = useMemo(() => [
-    {
-      key: "runId",
-      header: "Run ID",
-      render: (run) => (
-        <Link
-          href={`/runs/${encodeURIComponent(run.runId)}`}
-          className="font-mono text-accent hover:underline cursor-pointer"
-        >
-          {run.runId}
-        </Link>
-      ),
-    },
-    {
-      key: "provider",
-      header: "Provider",
-      render: (run) => <span className="capitalize">{run.provider}</span>,
-    },
-    {
-      key: "benchmark",
-      header: "Benchmark",
-      render: (run) => <span className="capitalize">{run.benchmark}</span>,
-    },
-    {
-      key: "status",
-      header: "Status",
-      render: (run) => {
-        const isRunning = run.status === "running" || run.status === "pending" || run.status === "initializing"
-        const progress = run.summary.total > 0 ? run.summary.evaluated / run.summary.total : 0
+  const columns: Column<RunSummary>[] = useMemo(
+    () => [
+      {
+        key: "runId",
+        header: "Run ID",
+        render: (run) => (
+          <Link
+            href={`/runs/${encodeURIComponent(run.runId)}`}
+            className="font-mono text-accent hover:underline cursor-pointer"
+          >
+            {run.runId}
+          </Link>
+        ),
+      },
+      {
+        key: "provider",
+        header: "Provider",
+        render: (run) => <span className="capitalize">{run.provider}</span>,
+      },
+      {
+        key: "benchmark",
+        header: "Benchmark",
+        render: (run) => <span className="capitalize">{run.benchmark}</span>,
+      },
+      {
+        key: "status",
+        header: "Status",
+        render: (run) => {
+          const isRunning =
+            run.status === "running" ||
+            run.status === "pending" ||
+            run.status === "initializing" ||
+            run.status === "stopping"
+          const s = run.summary
+          const phasesCompleted = s.ingested + s.indexed + s.searched + s.answered + s.evaluated
+          const totalPhases = 5 * s.total
+          const progress = totalPhases > 0 ? phasesCompleted / totalPhases : 0
 
-        return (
-          <div className="flex items-center gap-2">
-            {isRunning && (
-              <CircularProgress progress={progress} size={18} strokeWidth={2} />
-            )}
-            <span className={cn("badge", getStatusColor(run.status))}>
-              {run.status}
-            </span>
-            {isRunning && (
-              <span className="text-text-muted text-xs font-mono">
-                {run.summary.evaluated}/{run.summary.total}
-              </span>
-            )}
-          </div>
-        )
+          let phasesFullyComplete = 0
+          if (s.ingested === s.total) phasesFullyComplete++
+          if (s.indexed === s.total) phasesFullyComplete++
+          if (s.searched === s.total) phasesFullyComplete++
+          if (s.answered === s.total) phasesFullyComplete++
+          if (s.evaluated === s.total) phasesFullyComplete++
+
+          return (
+            <div className="flex items-center gap-2">
+              {isRunning && <CircularProgress progress={progress} size={18} strokeWidth={2} />}
+              <span className={cn("badge", getStatusColor(run.status))}>{run.status}</span>
+              {isRunning && s.total > 0 && (
+                <span className="text-text-muted text-xs font-mono">{phasesFullyComplete}/5</span>
+              )}
+            </div>
+          )
+        },
       },
-    },
-    {
-      key: "accuracy",
-      header: "Accuracy",
-      align: "right",
-      render: (run) => {
-        const accuracyPct = run.accuracy !== null && run.accuracy !== undefined
-          ? (run.accuracy * 100).toFixed(0)
-          : null
-        return accuracyPct ? (
-          <span className="font-mono">{accuracyPct}%</span>
-        ) : (
-          <span className="text-text-muted">—</span>
-        )
+      {
+        key: "accuracy",
+        header: "Accuracy",
+        align: "right",
+        render: (run) => {
+          const accuracyPct =
+            run.accuracy !== null && run.accuracy !== undefined
+              ? (run.accuracy * 100).toFixed(0)
+              : null
+          return accuracyPct ? (
+            <span className="font-mono">{accuracyPct}%</span>
+          ) : (
+            <span className="text-text-muted">—</span>
+          )
+        },
       },
-    },
-    {
-      key: "date",
-      header: "Date",
-      render: (run) => (
-        <span className="text-text-secondary text-sm">
-          {formatDate(run.createdAt)}
-        </span>
-      ),
-    },
-    {
-      key: "actions",
-      header: "",
-      width: "40px",
-      align: "right",
-      render: (run) => (
-        <RunActionsMenu
-          runId={run.runId}
-          provider={run.provider}
-          benchmark={run.benchmark}
-          status={run.status}
-          onAddToLeaderboard={(data) => handleAddToLeaderboard(run.runId, data)}
-          onDelete={() => handleDelete(run.runId)}
-          onTerminate={() => handleTerminate(run.runId)}
-          onContinue={() => handleContinue(run)}
-        />
-      ),
-    },
-  ], [])
+      {
+        key: "date",
+        header: "Date",
+        render: (run) => (
+          <span className="text-text-secondary text-sm">{formatDate(run.createdAt)}</span>
+        ),
+      },
+      {
+        key: "actions",
+        header: "",
+        width: "40px",
+        align: "right",
+        render: (run) => (
+          <RunActionsMenu
+            runId={run.runId}
+            provider={run.provider}
+            benchmark={run.benchmark}
+            status={run.status}
+            onAddToLeaderboard={(data) => handleAddToLeaderboard(run.runId, data)}
+            onDelete={() => handleDelete(run.runId)}
+            onTerminate={() => handleTerminate(run.runId)}
+            onContinue={() => handleContinue(run)}
+          />
+        ),
+      },
+    ],
+    []
+  )
 
   const clearFilters = () => {
     setSearch("")
@@ -343,25 +356,24 @@ export default function RunsPage() {
           </button>
         </div>
       ) : runs.length === 0 ? (
-        <div className="text-center py-12">
-          <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-bg-elevated flex items-center justify-center">
-            <svg className="w-8 h-8 text-text-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 12h16.5m-16.5 3.75h16.5M3.75 19.5h16.5M5.625 4.5h12.75a1.875 1.875 0 010 3.75H5.625a1.875 1.875 0 010-3.75z" />
-            </svg>
-          </div>
-          <h3 className="text-lg font-medium text-text-primary mb-4">No runs yet.</h3>
-          <Link
-            href="/runs/new"
-            className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded text-sm font-medium transition-all font-display tracking-tight text-white border border-transparent hover:border-white/30"
-            style={{
-              background: "linear-gradient(135deg, rgb(38, 123, 241) 40%, rgb(21, 70, 139) 100%)",
-              boxShadow: "rgba(255, 255, 255, 0.25) 2px 2px 8px 0px inset, rgba(0, 0, 0, 0.15) -2px -2px 7px 0px inset",
-            }}
-          >
-            <span className="text-lg leading-none">+</span>
-            <span>New Run</span>
-          </Link>
-        </div>
+        <EmptyState
+          icon={<ListIcon />}
+          title="No runs yet"
+          action={
+            <Link
+              href="/runs/new"
+              className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded text-sm font-medium transition-all font-display tracking-tight text-white border border-transparent hover:border-white/30"
+              style={{
+                background: "linear-gradient(135deg, rgb(38, 123, 241) 40%, rgb(21, 70, 139) 100%)",
+                boxShadow:
+                  "rgba(255, 255, 255, 0.25) 2px 2px 8px 0px inset, rgba(0, 0, 0, 0.15) -2px -2px 7px 0px inset",
+              }}
+            >
+              <span className="text-lg leading-none">+</span>
+              <span>New Run</span>
+            </Link>
+          }
+        />
       ) : (
         <DataTable
           columns={columns}

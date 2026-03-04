@@ -74,64 +74,66 @@ export function DropdownMenu({ items, align = "right" }: DropdownMenuProps) {
       </button>
 
       {/* Dropdown - rendered via portal */}
-      {open && typeof document !== "undefined" && createPortal(
-        <div
-          ref={dropdownRef}
-          className="fixed z-[9999] w-48 bg-[#0b0b0e] border border-[#333333] rounded overflow-hidden"
-          style={{
-            top: position.top,
-            left: position.left,
-            boxShadow: "0 4px 16px rgba(34, 34, 34, 0.5)",
-          }}
-        >
-          <div className="py-1">
-            {items.map((item, idx) => {
-              if (item.divider) {
-                return <div key={idx} className="border-t border-[#333333] my-1" />
-              }
+      {open &&
+        typeof document !== "undefined" &&
+        createPortal(
+          <div
+            ref={dropdownRef}
+            className="fixed z-[9999] w-48 bg-[#0b0b0e] border border-[#333333] rounded overflow-hidden"
+            style={{
+              top: position.top,
+              left: position.left,
+              boxShadow: "0 4px 16px rgba(34, 34, 34, 0.5)",
+            }}
+          >
+            <div className="py-1">
+              {items.map((item, idx) => {
+                if (item.divider) {
+                  return <div key={idx} className="border-t border-[#333333] my-1" />
+                }
 
-              const className = cn(
-                "w-full px-3 py-2 text-sm text-left transition-colors flex items-center gap-2 cursor-pointer",
-                item.disabled
-                  ? "text-text-muted cursor-not-allowed"
-                  : item.danger
-                    ? "text-status-error hover:bg-[#222222]"
-                    : "text-text-secondary hover:bg-[#222222] hover:text-text-primary"
-              )
+                const className = cn(
+                  "w-full px-3 py-2 text-sm text-left transition-colors flex items-center gap-2 cursor-pointer",
+                  item.disabled
+                    ? "text-text-muted cursor-not-allowed"
+                    : item.danger
+                      ? "text-status-error hover:bg-[#222222]"
+                      : "text-text-secondary hover:bg-[#222222] hover:text-text-primary"
+                )
 
-              if (item.href && !item.disabled) {
+                if (item.href && !item.disabled) {
+                  return (
+                    <Link
+                      key={idx}
+                      href={item.href}
+                      className={className}
+                      onClick={() => setOpen(false)}
+                    >
+                      {item.label}
+                    </Link>
+                  )
+                }
+
                 return (
-                  <Link
+                  <button
                     key={idx}
-                    href={item.href}
                     className={className}
-                    onClick={() => setOpen(false)}
+                    disabled={item.disabled}
+                    onClick={() => {
+                      if (!item.disabled && item.onClick) {
+                        item.onClick()
+                        setOpen(false)
+                      }
+                    }}
                   >
                     {item.label}
-                  </Link>
+                  </button>
                 )
-              }
-
-              return (
-                <button
-                  key={idx}
-                  className={className}
-                  disabled={item.disabled}
-                  onClick={() => {
-                    if (!item.disabled && item.onClick) {
-                      item.onClick()
-                      setOpen(false)
-                    }
-                  }}
-                >
-                  {item.label}
-                </button>
-              )
-            })}
-          </div>
-        </div>,
-        document.body
-      )}
+              })}
+            </div>
+          </div>,
+          document.body
+        )}
     </>
   )
 }

@@ -7,7 +7,12 @@ import { getRun, getRunReport, stopRun, startRun, type RunDetail } from "@/lib/a
 import { formatDate, getStatusColor, cn } from "@/lib/utils"
 import { PhaseProgress } from "@/components/phase-progress"
 import { QuestionList } from "@/components/question-list"
-import { StatsGrid, AccuracyByType, LatencyTable, RetrievalMetrics } from "@/components/benchmark-results"
+import {
+  StatsGrid,
+  AccuracyByType,
+  LatencyTable,
+  RetrievalMetrics,
+} from "@/components/benchmark-results"
 
 type Tab = "overview" | "results"
 
@@ -22,7 +27,8 @@ export default function RunDetailPage() {
 
   // Get tab from URL or default to "overview"
   const tabFromUrl = searchParams.get("tab") as Tab | null
-  const initialTab: Tab = tabFromUrl && ["overview", "results"].includes(tabFromUrl) ? tabFromUrl : "overview"
+  const initialTab: Tab =
+    tabFromUrl && ["overview", "results"].includes(tabFromUrl) ? tabFromUrl : "overview"
 
   const [run, setRun] = useState<RunDetail | null>(null)
   const [report, setReport] = useState<any>(null)
@@ -33,7 +39,11 @@ export default function RunDetailPage() {
 
   // Check if run is in progress (include stopping to keep polling until fully stopped)
   const isInitializing = run?.status === "initializing"
-  const isRunning = run?.status === "running" || run?.status === "pending" || run?.status === "stopping" || isInitializing
+  const isRunning =
+    run?.status === "running" ||
+    run?.status === "pending" ||
+    run?.status === "stopping" ||
+    isInitializing
   const isStopping = run?.status === "stopping"
   const isFailed = run?.status === "failed"
   const isPartial = run?.status === "partial"
@@ -76,9 +86,10 @@ export default function RunDetailPage() {
   // Update URL when tab changes
   const handleTabChange = (tab: Tab) => {
     setActiveTab(tab)
-    const newUrl = tab === "overview"
-      ? `/runs/${encodeURIComponent(runId)}`
-      : `/runs/${encodeURIComponent(runId)}?tab=${tab}`
+    const newUrl =
+      tab === "overview"
+        ? `/runs/${encodeURIComponent(runId)}`
+        : `/runs/${encodeURIComponent(runId)}?tab=${tab}`
     router.replace(newUrl, { scroll: false })
   }
 
@@ -162,7 +173,9 @@ export default function RunDetailPage() {
       <div className="animate-fade-in">
         {/* Breadcrumb */}
         <div className="flex items-center gap-2 text-sm text-text-secondary mb-4">
-          <Link href="/runs" className="hover:text-text-primary">Runs</Link>
+          <Link href="/runs" className="hover:text-text-primary">
+            Runs
+          </Link>
           <span>/</span>
           <span className="text-text-primary font-mono">{runId}</span>
         </div>
@@ -171,9 +184,7 @@ export default function RunDetailPage() {
         <div className="mb-8">
           <h1 className="text-2xl font-display font-semibold text-text-primary flex items-center gap-3">
             {runId}
-            <span className="badge text-sm bg-accent/10 text-accent">
-              initializing
-            </span>
+            <span className="badge text-sm bg-accent/10 text-accent">initializing</span>
           </h1>
           <div className="flex items-center gap-4 mt-2 text-sm text-text-secondary">
             <span>
@@ -191,7 +202,9 @@ export default function RunDetailPage() {
         <div className="flex flex-col items-center justify-center py-16 border border-border rounded-lg">
           <div className="w-10 h-10 border-2 border-accent border-t-transparent rounded-full animate-spin mb-4" />
           <p className="text-text-secondary text-lg">Loading benchmark dataset...</p>
-          <p className="text-text-muted text-sm mt-2">This may take a moment for first-time downloads</p>
+          <p className="text-text-muted text-sm mt-2">
+            This may take a moment for first-time downloads
+          </p>
         </div>
       </div>
     )
@@ -199,13 +212,15 @@ export default function RunDetailPage() {
 
   const allQuestions = Object.values(run.questions)
   // Only count questions that have been evaluated
-  const evaluatedQuestions = allQuestions.filter(q => q.phases.evaluate.status === "completed")
-  const failedQuestions = evaluatedQuestions.filter(q => q.phases.evaluate.label === "incorrect")
-  const accuracy = report?.summary?.accuracy ?? (
-    evaluatedQuestions.length > 0
-      ? (evaluatedQuestions.filter(q => q.phases.evaluate.score === 1).length / evaluatedQuestions.length) * 100
-      : 0
-  )
+  const evaluatedQuestions = allQuestions.filter((q) => q.phases.evaluate.status === "completed")
+  const failedQuestions = evaluatedQuestions.filter((q) => q.phases.evaluate.label === "incorrect")
+  const accuracy =
+    report?.summary?.accuracy ??
+    (evaluatedQuestions.length > 0
+      ? (evaluatedQuestions.filter((q) => q.phases.evaluate.score === 1).length /
+          evaluatedQuestions.length) *
+        100
+      : 0)
 
   // Find error from failed phases
   const runError = (() => {
@@ -224,7 +239,9 @@ export default function RunDetailPage() {
     <div className="animate-fade-in">
       {/* Breadcrumb */}
       <div className="flex items-center gap-2 text-sm text-text-secondary mb-4">
-        <Link href="/runs" className="hover:text-text-primary">Runs</Link>
+        <Link href="/runs" className="hover:text-text-primary">
+          Runs
+        </Link>
         <span>/</span>
         <span className="text-text-primary font-mono">{runId}</span>
       </div>
@@ -234,9 +251,7 @@ export default function RunDetailPage() {
         <div>
           <h1 className="text-2xl font-display font-semibold text-text-primary flex items-center gap-3">
             {runId}
-            <span className={cn("badge text-sm", getStatusColor(run.status))}>
-              {run.status}
-            </span>
+            <span className={cn("badge text-sm", getStatusColor(run.status))}>{run.status}</span>
             {(isRunning || isStopping) && (
               <button
                 onClick={handleTerminate}
@@ -274,12 +289,10 @@ export default function RunDetailPage() {
               <span className="capitalize">{run.benchmark}</span>
             </span>
             <span>
-              <span className="text-text-muted">Judge:</span>{" "}
-              {run.judge}
+              <span className="text-text-muted">Judge:</span> {run.judge}
             </span>
             <span>
-              <span className="text-text-muted">Created:</span>{" "}
-              {formatDate(run.createdAt)}
+              <span className="text-text-muted">Created:</span> {formatDate(run.createdAt)}
             </span>
           </div>
         </div>
@@ -302,7 +315,7 @@ export default function RunDetailPage() {
 
       {/* Tabs */}
       <div className="flex gap-1 border-b border-border mt-8 mb-6">
-        {(["overview", "results"] as Tab[]).map(tab => (
+        {(["overview", "results"] as Tab[]).map((tab) => (
           <button
             key={tab}
             className={cn(
@@ -327,7 +340,9 @@ export default function RunDetailPage() {
               {
                 label: "accuracy",
                 value: accuracy ? `${accuracy.toFixed(1)}%` : "—",
-                subtext: report ? `${report.summary.correctCount}/${report.summary.totalQuestions} correct` : undefined,
+                subtext: report
+                  ? `${report.summary.correctCount}/${report.summary.totalQuestions} correct`
+                  : undefined,
               },
               {
                 label: "questions",
@@ -352,9 +367,7 @@ export default function RunDetailPage() {
         </div>
       )}
 
-      {activeTab === "results" && (
-        <QuestionList runId={runId} questions={evaluatedQuestions} />
-      )}
+      {activeTab === "results" && <QuestionList runId={runId} questions={evaluatedQuestions} />}
     </div>
   )
 }

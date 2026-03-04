@@ -16,6 +16,11 @@ export interface RunSummary {
     searched: number
     answered: number
     evaluated: number
+    indexingEpisodes?: {
+      total: number
+      completed: number
+      failed: number
+    }
   }
   accuracy: number | null
 }
@@ -42,6 +47,7 @@ export interface RunDetail extends RunSummary {
 export interface Provider {
   name: string
   displayName: string
+  concurrency: ConcurrencyConfig | null
 }
 
 export interface Benchmark {
@@ -115,8 +121,13 @@ export async function getRunQuestions(
   return fetchApi(`/api/runs/${encodeURIComponent(runId)}/questions${query ? `?${query}` : ""}`)
 }
 
-export async function getQuestion(runId: string, questionId: string): Promise<QuestionCheckpoint & { searchResultsFile?: any }> {
-  return fetchApi(`/api/runs/${encodeURIComponent(runId)}/questions/${encodeURIComponent(questionId)}`)
+export async function getQuestion(
+  runId: string,
+  questionId: string
+): Promise<QuestionCheckpoint & { searchResultsFile?: any }> {
+  return fetchApi(
+    `/api/runs/${encodeURIComponent(runId)}/questions/${encodeURIComponent(questionId)}`
+  )
 }
 
 export async function deleteRun(runId: string): Promise<void> {
@@ -129,7 +140,14 @@ export async function stopRun(runId: string): Promise<{ message: string }> {
 
 export type PhaseId = "ingest" | "indexing" | "search" | "answer" | "evaluate" | "report"
 
-export const PHASE_ORDER: PhaseId[] = ["ingest", "indexing", "search", "answer", "evaluate", "report"]
+export const PHASE_ORDER: PhaseId[] = [
+  "ingest",
+  "indexing",
+  "search",
+  "answer",
+  "evaluate",
+  "report",
+]
 
 export type SelectionMode = "full" | "sample" | "limit"
 export type SampleType = "consecutive" | "random"
@@ -141,6 +159,15 @@ export interface SamplingConfig {
   limit?: number
 }
 
+export interface ConcurrencyConfig {
+  default?: number
+  ingest?: number
+  indexing?: number
+  search?: number
+  answer?: number
+  evaluate?: number
+}
+
 export async function startRun(params: {
   provider: string
   benchmark: string
@@ -149,6 +176,7 @@ export async function startRun(params: {
   answeringModel?: string
   limit?: number
   sampling?: SamplingConfig
+  concurrency?: ConcurrencyConfig
   force?: boolean
   fromPhase?: PhaseId
   sourceRunId?: string
@@ -161,7 +189,7 @@ export async function startRun(params: {
 
 export async function getCompletedRuns(): Promise<RunSummary[]> {
   const runs = await getRuns()
-  return runs.filter(r => r.status === "completed")
+  return runs.filter((r) => r.status === "completed")
 }
 
 // Providers & Benchmarks
@@ -176,7 +204,14 @@ export async function getBenchmarks(): Promise<{ benchmarks: Benchmark[] }> {
 export async function getBenchmarkQuestions(
   benchmark: string,
   params?: { page?: number; limit?: number; type?: string }
-): Promise<PaginatedResponse<{ questionId: string; question: string; questionType: string; groundTruth: string }>> {
+): Promise<
+  PaginatedResponse<{
+    questionId: string
+    question: string
+    questionType: string
+    groundTruth: string
+  }>
+> {
   const searchParams = new URLSearchParams()
   if (params?.page) searchParams.set("page", params.page.toString())
   if (params?.limit) searchParams.set("limit", params.limit.toString())
@@ -186,7 +221,9 @@ export async function getBenchmarkQuestions(
   return fetchApi(`/api/benchmarks/${benchmark}/questions${query ? `?${query}` : ""}`)
 }
 
-export async function getModels(): Promise<{ models: { openai: any[]; anthropic: any[]; google: any[] } }> {
+export async function getModels(): Promise<{
+  models: { openai: any[]; anthropic: any[]; google: any[] }
+}> {
   return fetchApi("/api/models")
 }
 
@@ -204,6 +241,7 @@ export interface LatencyStats {
 
 export interface LatencyByPhase {
   ingest: LatencyStats
+  indexing: LatencyStats
   search: LatencyStats
   answer: LatencyStats
   evaluate: LatencyStats
@@ -287,7 +325,7 @@ export async function getActiveDownloads(): Promise<DownloadsResponse> {
 }
 
 // Compares
-export type CompareStatus = "pending" | "running" | "completed" | "failed" | "partial"
+export type CompareStatus = "pending" | "running" | "stopping" | "completed" | "failed" | "partial"
 
 export interface CompareRunInfo {
   provider: string
@@ -301,8 +339,27 @@ export interface CompareRunInfo {
     indexed: number
     searched: number
     answered: number
+    indexingEpisodes?: {
+      total: number
+      completed: number
+      failed: number
+    }
     evaluated: number
   }
+}
+
+export interface CompareRunProgress {
+  provider: string
+  runId: string
+  progress: {
+    total: number
+    ingested: number
+    indexed: number
+    searched: number
+    answered: number
+    evaluated: number
+  }
+  status: string
 }
 
 export interface CompareSummary {
@@ -315,6 +372,7 @@ export interface CompareSummary {
   createdAt: string
   updatedAt: string
   accuracy: number | null
+  runProgress?: CompareRunProgress[]
 }
 
 export interface CompareDetail extends CompareSummary {

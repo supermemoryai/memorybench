@@ -592,8 +592,7 @@ export class AnamnesisProvider implements Provider {
 
         // Delete from ChromaDB
         if (ids.length > 0) {
-            const chromaPython = process.env.CHROMA_PYTHON ||
-                `${process.env.HOME}/.cache/uv/archive-v0/M3K4_j6jvY5-Rm7WgJRtz/bin/python`
+            const chromaPython = process.env.CHROMA_PYTHON || "python3"
             try {
                 const chromaIds = ids.map(r => r.id.toString())
                 const proc = spawn(chromaPython, ["-c", `
@@ -608,8 +607,7 @@ for i in range(0, len(ids), 500):
     except:
         pass
 print(json.dumps({"deleted": len(ids)}))
-`], {
-                    args: [JSON.stringify(chromaIds)],
+`, JSON.stringify(chromaIds)], {
                     env: {
                         ...process.env,
                         CHROMA_PATH: process.env.CHROMA_PATH || `${process.env.HOME}/.claude-mem/vector-db`,

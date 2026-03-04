@@ -76,24 +76,25 @@ export function MultiSelect({
 
   // Filter options based on search
   const filteredOptions = search
-    ? options.filter(opt => opt.label.toLowerCase().includes(search.toLowerCase()))
+    ? options.filter((opt) => opt.label.toLowerCase().includes(search.toLowerCase()))
     : options
 
   const toggleOption = (value: string) => {
     if (selected.includes(value)) {
-      onChange(selected.filter(v => v !== value))
+      onChange(selected.filter((v) => v !== value))
     } else {
       onChange([...selected, value])
     }
   }
 
-  const displayText = selected.length === 0
-    ? placeholder || label
-    : selected.length === 1
-      ? options.find(o => o.value === selected[0])?.label || selected[0]
-      : selected.length <= 2
-        ? selected.map(v => options.find(o => o.value === v)?.label || v).join(", ")
-        : `${selected.length} selected`
+  const displayText =
+    selected.length === 0
+      ? placeholder || label
+      : selected.length === 1
+        ? options.find((o) => o.value === selected[0])?.label || selected[0]
+        : selected.length <= 2
+          ? selected.map((v) => options.find((o) => o.value === v)?.label || v).join(", ")
+          : `${selected.length} selected`
 
   return (
     <>
@@ -124,91 +125,101 @@ export function MultiSelect({
       </button>
 
       {/* Dropdown - rendered via portal */}
-      {open && typeof document !== "undefined" && createPortal(
-        <div
-          ref={dropdownRef}
-          className="fixed z-[9999] bg-[#0b0b0e] border border-[#333333] rounded overflow-hidden"
-          style={{
-            top: position.top,
-            left: position.left,
-            width: position.width,
-            boxShadow: "0 4px 16px rgba(34, 34, 34, 0.5)",
-          }}
-        >
-          {/* Search input */}
-          {searchable && (
-            <div className="p-2 border-b border-[#333333]">
-              <div className="relative">
-                <svg
-                  className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                  strokeWidth={2}
-                >
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                </svg>
-                <input
-                  ref={inputRef}
-                  type="text"
-                  placeholder="Search values..."
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  className="w-full pl-8 pr-3 py-1.5 text-sm bg-[#222222] border border-[#333333] rounded text-text-primary placeholder-text-muted focus:outline-none focus:border-accent"
-                />
-              </div>
-            </div>
-          )}
-
-          {/* Options list */}
-          <div className="max-h-64 overflow-y-auto">
-            {filteredOptions.length === 0 ? (
-              <div className="px-3 py-2 text-sm text-text-muted">No options found</div>
-            ) : (
-              filteredOptions.map((option) => {
-                const isSelected = selected.includes(option.value)
-                return (
-                  <button
-                    key={option.value}
-                    type="button"
-                    className={cn(
-                      "w-full flex items-center gap-2 px-3 py-2 text-sm text-left transition-colors cursor-pointer",
-                      "text-text-secondary hover:bg-[#222222] hover:text-text-primary",
-                      isSelected && "text-text-primary"
-                    )}
-                    onClick={() => toggleOption(option.value)}
+      {open &&
+        typeof document !== "undefined" &&
+        createPortal(
+          <div
+            ref={dropdownRef}
+            className="fixed z-[9999] bg-[#0b0b0e] border border-[#333333] rounded overflow-hidden"
+            style={{
+              top: position.top,
+              left: position.left,
+              width: position.width,
+              boxShadow: "0 4px 16px rgba(34, 34, 34, 0.5)",
+            }}
+          >
+            {/* Search input */}
+            {searchable && (
+              <div className="p-2 border-b border-[#333333]">
+                <div className="relative">
+                  <svg
+                    className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    strokeWidth={2}
                   >
-                    {/* Checkbox */}
-                    <div
-                      className={cn(
-                        "w-4 h-4 rounded border flex items-center justify-center flex-shrink-0",
-                        isSelected
-                          ? "bg-accent border-accent"
-                          : "border-[#444444] bg-transparent"
-                      )}
-                    >
-                      {isSelected && (
-                        <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                        </svg>
-                      )}
-                    </div>
-
-                    {/* Label */}
-                    <span className="flex-1 truncate">{option.label}</span>
-
-                    {/* Count */}
-                    {option.count !== undefined && (
-                      <span className="text-text-muted text-xs">{option.count}</span>
-                    )}
-                  </button>
-                )
-              })
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                    />
+                  </svg>
+                  <input
+                    ref={inputRef}
+                    type="text"
+                    placeholder="Search values..."
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    className="w-full pl-8 pr-3 py-1.5 text-sm bg-[#222222] border border-[#333333] rounded text-text-primary placeholder-text-muted focus:outline-none focus:border-accent"
+                  />
+                </div>
+              </div>
             )}
-          </div>
-        </div>,
-        document.body
-      )}
+
+            {/* Options list */}
+            <div className="max-h-64 overflow-y-auto">
+              {filteredOptions.length === 0 ? (
+                <div className="px-3 py-2 text-sm text-text-muted">No options found</div>
+              ) : (
+                filteredOptions.map((option) => {
+                  const isSelected = selected.includes(option.value)
+                  return (
+                    <button
+                      key={option.value}
+                      type="button"
+                      className={cn(
+                        "w-full flex items-center gap-2 px-3 py-2 text-sm text-left transition-colors cursor-pointer",
+                        "text-text-secondary hover:bg-[#222222] hover:text-text-primary",
+                        isSelected && "text-text-primary"
+                      )}
+                      onClick={() => toggleOption(option.value)}
+                    >
+                      {/* Checkbox */}
+                      <div
+                        className={cn(
+                          "w-4 h-4 rounded border flex items-center justify-center flex-shrink-0",
+                          isSelected ? "bg-accent border-accent" : "border-[#444444] bg-transparent"
+                        )}
+                      >
+                        {isSelected && (
+                          <svg
+                            className="w-3 h-3 text-white"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke="currentColor"
+                            strokeWidth={3}
+                          >
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                          </svg>
+                        )}
+                      </div>
+
+                      {/* Label */}
+                      <span className="flex-1 truncate">{option.label}</span>
+
+                      {/* Count */}
+                      {option.count !== undefined && (
+                        <span className="text-text-muted text-xs">{option.count}</span>
+                      )}
+                    </button>
+                  )
+                })
+              )}
+            </div>
+          </div>,
+          document.body
+        )}
     </>
   )
 }

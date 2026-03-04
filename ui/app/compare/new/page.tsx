@@ -3,7 +3,15 @@
 import { useState, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
-import { getProviders, getBenchmarks, getModels, startCompare, type SelectionMode, type SampleType, type SamplingConfig } from "@/lib/api"
+import {
+  getProviders,
+  getBenchmarks,
+  getModels,
+  startCompare,
+  type SelectionMode,
+  type SampleType,
+  type SamplingConfig,
+} from "@/lib/api"
 import { SingleSelect } from "@/components/single-select"
 import { MultiSelect } from "@/components/multi-select"
 
@@ -55,7 +63,7 @@ export default function NewComparePage() {
       setModels(modelsRes.models)
 
       if (benchmarksRes.benchmarks.length > 0) {
-        setForm(f => ({ ...f, benchmark: benchmarksRes.benchmarks[0].name }))
+        setForm((f) => ({ ...f, benchmark: benchmarksRes.benchmarks[0].name }))
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load options")
@@ -114,20 +122,18 @@ export default function NewComparePage() {
         sampling,
       })
 
-      router.push("/compare")
+      router.push(`/compare`)
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to start comparison")
       setSubmitting(false)
     }
   }
 
-  const allModels = [
-    ...Object.values(models).flat(),
-  ] as { alias: string; displayName: string }[]
+  const allModels = [...Object.values(models).flat()] as { alias: string; displayName: string }[]
 
-  const providerOptions = providers.map(p => ({ value: p.name, label: p.displayName }))
-  const benchmarkOptions = benchmarks.map(b => ({ value: b.name, label: b.displayName }))
-  const modelOptions = allModels.map(m => ({ value: m.alias, label: m.displayName || m.alias }))
+  const providerOptions = providers.map((p) => ({ value: p.name, label: p.displayName }))
+  const benchmarkOptions = benchmarks.map((b) => ({ value: b.name, label: b.displayName }))
+  const modelOptions = allModels.map((m) => ({ value: m.alias, label: m.displayName || m.alias }))
 
   if (loading) {
     return (
@@ -140,16 +146,16 @@ export default function NewComparePage() {
   return (
     <div className="max-w-2xl animate-fade-in">
       <div className="flex items-center gap-2 text-sm text-text-secondary mb-4">
-        <Link href="/compare" className="hover:text-text-primary">Compare</Link>
+        <Link href="/compare" className="hover:text-text-primary">
+          Compare
+        </Link>
         <span>/</span>
         <span className="text-text-primary">New Comparison</span>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
         <div>
-          <label className="block text-sm font-medium text-text-primary mb-2">
-            Compare ID
-          </label>
+          <label className="block text-sm font-medium text-text-primary mb-2">Compare ID</label>
           {!editingCompareId ? (
             <button
               type="button"
@@ -157,8 +163,18 @@ export default function NewComparePage() {
               onClick={() => setEditingCompareId(true)}
             >
               <span className="lowercase">{displayCompareId}</span>
-              <svg className="w-3.5 h-3.5 text-text-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+              <svg
+                className="w-3.5 h-3.5 text-text-muted"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={2}
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"
+                />
               </svg>
             </button>
           ) : (
@@ -180,10 +196,12 @@ export default function NewComparePage() {
             <div className="text-base mt-4">
               <span className="text-text-muted">Providers:</span>{" "}
               <span className="text-text-primary font-medium">
-                {form.providers.map((providerId) => {
-                  const provider = providers.find(p => p.name === providerId)
-                  return provider?.displayName || providerId
-                }).join(", ")}
+                {form.providers
+                  .map((providerId) => {
+                    const provider = providers.find((p) => p.name === providerId)
+                    return provider?.displayName || providerId
+                  })
+                  .join(", ")}
               </span>
             </div>
           )}
@@ -192,7 +210,10 @@ export default function NewComparePage() {
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium text-text-primary mb-2">
-              Providers {form.providers.length < 2 && <span className="text-status-error text-xs">(select at least 2)</span>}
+              Providers{" "}
+              {form.providers.length < 2 && (
+                <span className="text-status-error text-xs">(select at least 2)</span>
+              )}
             </label>
             <div className="border border-[#444444] rounded bg-[#222222]">
               <MultiSelect
@@ -211,9 +232,7 @@ export default function NewComparePage() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-text-primary mb-2">
-              Benchmark
-            </label>
+            <label className="block text-sm font-medium text-text-primary mb-2">Benchmark</label>
             <SingleSelect
               label="Select benchmark"
               options={benchmarkOptions}
@@ -226,9 +245,7 @@ export default function NewComparePage() {
 
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium text-text-primary mb-2">
-              Judge Model
-            </label>
+            <label className="block text-sm font-medium text-text-primary mb-2">Judge Model</label>
             <SingleSelect
               label="Select model"
               options={modelOptions}
@@ -284,7 +301,7 @@ export default function NewComparePage() {
                 type="number"
                 className="w-16 px-3 py-1.5 text-sm bg-[#222222] border border-[#444444] rounded text-text-primary placeholder-text-muted focus:outline-none focus:border-accent"
                 value={form.perCategory}
-                onChange={e => setForm({ ...form, perCategory: e.target.value })}
+                onChange={(e) => setForm({ ...form, perCategory: e.target.value })}
                 placeholder="2"
                 min="1"
               />
@@ -320,7 +337,7 @@ export default function NewComparePage() {
                 type="number"
                 className="input w-32"
                 value={form.limit}
-                onChange={e => setForm({ ...form, limit: e.target.value })}
+                onChange={(e) => setForm({ ...form, limit: e.target.value })}
                 placeholder="e.g. 100"
                 min="1"
               />
@@ -340,7 +357,8 @@ export default function NewComparePage() {
             className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded text-sm font-medium transition-all font-display tracking-tight text-white border border-transparent hover:border-white/30 disabled:opacity-50"
             style={{
               background: "linear-gradient(135deg, rgb(38, 123, 241) 40%, rgb(21, 70, 139) 100%)",
-              boxShadow: "rgba(255, 255, 255, 0.25) 2px 2px 8px 0px inset, rgba(0, 0, 0, 0.15) -2px -2px 7px 0px inset",
+              boxShadow:
+                "rgba(255, 255, 255, 0.25) 2px 2px 8px 0px inset, rgba(0, 0, 0, 0.15) -2px -2px 7px 0px inset",
             }}
             disabled={submitting || form.providers.length < 2 || !form.benchmark}
           >
@@ -351,8 +369,18 @@ export default function NewComparePage() {
               </>
             ) : (
               <>
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 010 1.971l-11.54 6.347a1.125 1.125 0 01-1.667-.985V5.653z" />
+                <svg
+                  className="w-4 h-4"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeWidth={2}
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 010 1.971l-11.54 6.347a1.125 1.125 0 01-1.667-.985V5.653z"
+                  />
                 </svg>
                 <span>Compare</span>
               </>

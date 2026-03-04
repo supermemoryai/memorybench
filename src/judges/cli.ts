@@ -70,7 +70,7 @@ export class CliJudge implements Judge {
         return getJudgePrompt(questionType, providerPrompts)
     }
 
-    getModel() {
+    getModel(): import("ai").LanguageModel {
         // CLI doesn't use AI SDK LanguageModel - throw if called
         throw new Error("CLI judge does not expose an AI SDK model")
     }

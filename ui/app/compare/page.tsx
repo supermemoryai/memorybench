@@ -8,6 +8,7 @@ import { FilterBar } from "@/components/filter-bar"
 import { DataTable, type Column } from "@/components/data-table"
 import { CompareActionsMenu } from "@/components/compare-actions-menu"
 import { CircularProgress } from "@/components/circular-progress"
+import { EmptyState, ChartIcon } from "@/components/empty-state"
 
 const POLL_INTERVAL = 2000 // 2 seconds
 
@@ -24,7 +25,7 @@ export default function ComparesPage() {
 
   // Check if any comparison is in progress
   const hasRunningCompares = useMemo(() => {
-    return compares.some(c => c.status === "running" || c.status === "pending")
+    return compares.some((c) => c.status === "running" || c.status === "pending")
   }, [compares])
 
   // Silent refresh (no loading state)
@@ -79,7 +80,7 @@ export default function ComparesPage() {
 
     try {
       await deleteCompare(compareId)
-      setCompares(prev => prev.filter(c => c.compareId !== compareId))
+      setCompares((prev) => prev.filter((c) => c.compareId !== compareId))
     } catch (e) {
       alert(e instanceof Error ? e.message : "Failed to delete comparison")
     }
@@ -88,7 +89,7 @@ export default function ComparesPage() {
   // Get unique values for filter options
   const benchmarks = useMemo(() => {
     const counts: Record<string, number> = {}
-    compares.forEach(c => {
+    compares.forEach((c) => {
       counts[c.benchmark] = (counts[c.benchmark] || 0) + 1
     })
     return Object.entries(counts).map(([value, count]) => ({
@@ -100,7 +101,7 @@ export default function ComparesPage() {
 
   const statuses = useMemo(() => {
     const counts: Record<string, number> = {}
-    compares.forEach(c => {
+    compares.forEach((c) => {
       counts[c.status] = (counts[c.status] || 0) + 1
     })
     return Object.entries(counts).map(([value, count]) => ({
@@ -112,13 +113,13 @@ export default function ComparesPage() {
 
   // Filter comparisons
   const filteredCompares = useMemo(() => {
-    return compares.filter(compare => {
+    return compares.filter((compare) => {
       // Search filter
       if (search) {
         const searchLower = search.toLowerCase()
         const matchesSearch =
           compare.compareId.toLowerCase().includes(searchLower) ||
-          compare.providers.some(p => p.toLowerCase().includes(searchLower)) ||
+          compare.providers.some((p) => p.toLowerCase().includes(searchLower)) ||
           compare.benchmark.toLowerCase().includes(searchLower)
         if (!matchesSearch) return false
       }
@@ -138,80 +139,119 @@ export default function ComparesPage() {
   }, [compares, search, selectedBenchmarks, selectedStatuses])
 
   // Build columns
-  const columns: Column<CompareSummary>[] = useMemo(() => [
-    {
-      key: "compareId",
-      header: "Compare ID",
-      render: (compare) => (
-        <Link
-          href={`/compare/${encodeURIComponent(compare.compareId)}`}
-          className="font-mono text-accent hover:underline cursor-pointer"
-        >
-          {compare.compareId}
-        </Link>
-      ),
-    },
-    {
-      key: "providers",
-      header: "Providers",
-      render: (compare) => (
-        <div className="flex flex-wrap gap-1.5">
-          {compare.providers.map((provider, idx) => (
-            <span
-              key={idx}
-              className="inline-flex items-center px-2 py-0.5 text-xs font-medium bg-[#222222] text-text-secondary font-display rounded-sm"
-            >
-              {provider}
-            </span>
-          ))}
-        </div>
-      ),
-    },
-    {
-      key: "benchmark",
-      header: "Benchmark",
-      render: (compare) => <span className="capitalize">{compare.benchmark}</span>,
-    },
-    {
-      key: "status",
-      header: "Status",
-      render: (compare) => {
-        const isRunning = compare.status === "running" || compare.status === "pending"
-
-        return (
-          <div className="flex items-center gap-2">
-            {isRunning && (
-              <CircularProgress progress={0.5} size={18} strokeWidth={2} />
-            )}
-            <span className={cn("badge", getStatusColor(compare.status))}>
-              {compare.status}
-            </span>
-          </div>
-        )
+  const columns: Column<CompareSummary>[] = useMemo(
+    () => [
+      {
+        key: "compareId",
+        header: "Compare ID",
+        render: (compare) => (
+          <Link
+            href={`/compare/${encodeURIComponent(compare.compareId)}`}
+            className="font-mono text-accent hover:underline cursor-pointer"
+          >
+            {compare.compareId}
+          </Link>
+        ),
       },
-    },
-    {
-      key: "date",
-      header: "Date",
-      render: (compare) => (
-        <span className="text-text-secondary text-sm">
-          {formatDate(compare.createdAt)}
-        </span>
-      ),
-    },
-    {
-      key: "actions",
-      header: "",
-      width: "40px",
-      align: "right",
-      render: (compare) => (
-        <CompareActionsMenu
-          compareId={compare.compareId}
-          onDelete={() => handleDelete(compare.compareId)}
-        />
-      ),
-    },
-  ], [])
+      {
+        key: "providers",
+        header: "Providers",
+        render: (compare) => (
+          <div className="flex flex-wrap gap-1.5">
+            {compare.providers.map((provider, idx) => (
+              <span
+                key={idx}
+                className="inline-flex items-center px-2 py-0.5 text-xs font-medium bg-[#222222] text-text-secondary font-display rounded-sm"
+              >
+                {provider}
+              </span>
+            ))}
+          </div>
+        ),
+      },
+      {
+        key: "benchmark",
+        header: "Benchmark",
+        render: (compare) => <span className="capitalize">{compare.benchmark}</span>,
+      },
+      {
+        key: "status",
+        header: "Status",
+        render: (compare) => {
+          const isRunning = compare.status === "running" || compare.status === "pending"
+
+          // Calculate overall progress from all runs
+          let progress = 0
+          let phasesFullyComplete = 0
+          if (compare.runProgress && compare.runProgress.length > 0) {
+            let totalPhasesCompleted = 0
+            let totalPhases = 0
+            let allRunsPhasesComplete = 0
+
+            for (const run of compare.runProgress) {
+              const p = run.progress
+              const total = p?.total || 0
+              if (total > 0) {
+                totalPhasesCompleted +=
+                  (p.ingested || 0) +
+                  (p.indexed || 0) +
+                  (p.searched || 0) +
+                  (p.answered || 0) +
+                  (p.evaluated || 0)
+                totalPhases += 5 * total
+
+                // Count fully complete phases for this run
+                let runPhasesComplete = 0
+                if (p.ingested === total) runPhasesComplete++
+                if (p.indexed === total) runPhasesComplete++
+                if (p.searched === total) runPhasesComplete++
+                if (p.answered === total) runPhasesComplete++
+                if (p.evaluated === total) runPhasesComplete++
+                allRunsPhasesComplete += runPhasesComplete
+              }
+            }
+
+            progress = totalPhases > 0 ? totalPhasesCompleted / totalPhases : 0
+            // Average phases complete across all runs
+            phasesFullyComplete =
+              compare.runProgress.length > 0
+                ? Math.floor(allRunsPhasesComplete / compare.runProgress.length)
+                : 0
+          }
+
+          return (
+            <div className="flex items-center gap-2">
+              {isRunning && <CircularProgress progress={progress} size={18} strokeWidth={2} />}
+              <span className={cn("badge", getStatusColor(compare.status))}>{compare.status}</span>
+              {isRunning && compare.runProgress && compare.runProgress.length > 0 && (
+                <span className="text-text-muted text-xs font-mono">{phasesFullyComplete}/5</span>
+              )}
+            </div>
+          )
+        },
+      },
+      {
+        key: "date",
+        header: "Date",
+        render: (compare) => (
+          <span className="text-text-secondary text-sm">{formatDate(compare.createdAt)}</span>
+        ),
+      },
+      {
+        key: "actions",
+        header: "",
+        width: "40px",
+        align: "right",
+        render: (compare) => (
+          <CompareActionsMenu
+            compareId={compare.compareId}
+            onDelete={() => handleDelete(compare.compareId)}
+          />
+        ),
+      },
+    ],
+    []
+  )
 
   const clearFilters = () => {
     setSearch("")
@@ -270,17 +310,11 @@ export default function ComparesPage() {
           </button>
         </div>
       ) : compares.length === 0 ? (
-        <div className="text-center py-12">
-          <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-bg-elevated flex items-center justify-center">
-            <svg className="w-8 h-8 text-text-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z" />
-            </svg>
-          </div>
-          <h3 className="text-lg font-medium text-text-primary mb-2">No comparisons yet</h3>
-          <p className="text-text-secondary text-sm max-w-md mx-auto">
-            Click the Compare button on the left panel to compare multiple providers against the same benchmark.
-          </p>
-        </div>
+        <EmptyState
+          icon={<ChartIcon />}
+          title="No comparisons yet"
+          description="Click the Compare button on the left panel to compare multiple providers against the same benchmark."
+        />
       ) : (
         <DataTable
           columns={columns}
