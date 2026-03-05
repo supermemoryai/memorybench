@@ -2,6 +2,8 @@ export interface LoCoMoMessage {
   speaker: string
   dia_id: string
   text: string
+  blip_caption?: string
+  img_url?: string[]
 }
 
 export interface LoCoMoQA {

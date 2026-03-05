@@ -161,7 +161,9 @@ export class LoCoMoBenchmark implements Benchmark {
 
       const unifiedMessages: UnifiedMessage[] = messages.map((m) => ({
         role: m.speaker === speakerA ? ("user" as const) : ("assistant" as const),
-        content: m.text,
+        content: m.blip_caption
+          ? `${m.text} [shared image: ${m.blip_caption}]`
+          : m.text,
         speaker: m.speaker,
       }))
 
