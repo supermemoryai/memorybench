@@ -57,7 +57,7 @@ export async function runSearchPhase(
       try {
         const results = await provider.search(question.question, {
           containerTag,
-          limit: 10,
+          limit: 19,
           threshold: 0.3,
         })
 

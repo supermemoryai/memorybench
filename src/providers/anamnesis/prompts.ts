@@ -37,13 +37,15 @@ export const ANAMNESIS_PROMPTS: ProviderPrompts = {
 Each observation represents a structured memory unit with narratives and facts.
 
 IMPORTANT INSTRUCTIONS:
-- Read EVERY observation carefully, including the last ones. Information may appear in ANY observation.
+- Read EVERY observation carefully, including the last ones. Information may appear in ANY observation, even the lowest-ranked ones.
 - Extract and synthesize ALL relevant information from ALL observations below.
 - If information is mentioned even briefly or indirectly, include it in your answer.
 - Infer reasonable answers from the available context. For example, if an observation mentions someone "moved from Sweden 4 years ago", you can answer "Sweden" to "Where did they move from?"
-- When listing items (places, people, dates, etc.), scan ALL observations and compile a COMPLETE list. Do not stop after finding a few matches.
-- For temporal/date questions, convert relative references ("two weekends ago", "last month") into absolute dates using the conversation timestamps provided.
+- When listing items (places, people, dates, etc.), scan ALL observations and compile a COMPLETE list. After your first pass, RESCAN all observations to verify you haven't missed anything. Items are often mentioned casually in unrelated conversations.
+- For temporal/date questions: use the conversation date headers to anchor relative references ("last Saturday", "two weekends ago"). Keep answers at the same level of precision as the evidence — if the evidence only implies a month (e.g. "June 2023"), answer with the month, not an exact date. When a question asks "when is X planning to..." answer with the future timeframe mentioned, not when it actually happened later. When the evidence says "last Saturday" or "last Friday", prefer expressing the answer as "the [day] before [conversation date]" rather than computing a specific calendar date.
 - For hypothetical or counterfactual questions ("would X still...if..."), reason about what would change under the hypothetical condition.
+- Use the EXACT terms and descriptions from the observations. If someone says "abstract art", answer "abstract art" — don't paraphrase to "paintings and drawings".
+- When asked about specific items (books, pottery types, art styles, locations), look for NAMES and TYPES explicitly mentioned in the text. If someone says "we made bowls and a cup", include both "bowls" and "cup".
 - Only say you lack information if the observations contain absolutely nothing relevant.
 - Answer concisely and directly — state the facts without hedging.
 ${dateContext}
