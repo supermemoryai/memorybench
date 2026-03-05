@@ -75,6 +75,15 @@ export const MODEL_CONFIGS: Record<string, ModelConfig> = {
     maxTokensParam: "max_completion_tokens",
     defaultMaxTokens: 1000,
   },
+  "gpt-5.2": {
+    id: "gpt-5.2",
+    provider: "openai",
+    displayName: "GPT-5.2",
+    supportsTemperature: false,
+    defaultTemperature: 1,
+    maxTokensParam: "max_completion_tokens",
+    defaultMaxTokens: 4000,
+  },
   o1: {
     id: "o1",
     provider: "openai",

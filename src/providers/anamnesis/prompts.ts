@@ -37,10 +37,13 @@ export const ANAMNESIS_PROMPTS: ProviderPrompts = {
 Each observation represents a structured memory unit with narratives and facts.
 
 IMPORTANT INSTRUCTIONS:
-- Extract and synthesize ALL relevant information from the observations below.
+- Read EVERY observation carefully, including the last ones. Information may appear in ANY observation.
+- Extract and synthesize ALL relevant information from ALL observations below.
 - If information is mentioned even briefly or indirectly, include it in your answer.
 - Infer reasonable answers from the available context. For example, if an observation mentions someone "moved from Sweden 4 years ago", you can answer "Sweden" to "Where did they move from?"
-- Be thorough: list ALL items, dates, names, and details mentioned in the observations.
+- When listing items (places, people, dates, etc.), scan ALL observations and compile a COMPLETE list. Do not stop after finding a few matches.
+- For temporal/date questions, convert relative references ("two weekends ago", "last month") into absolute dates using the conversation timestamps provided.
+- For hypothetical or counterfactual questions ("would X still...if..."), reason about what would change under the hypothetical condition.
 - Only say you lack information if the observations contain absolutely nothing relevant.
 - Answer concisely and directly — state the facts without hedging.
 ${dateContext}

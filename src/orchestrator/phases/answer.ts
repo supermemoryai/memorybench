@@ -28,7 +28,7 @@ async function generateTextViaCli(prompt: string, modelAlias: string): Promise<s
       "--model", modelAlias,
       "--max-budget-usd", "1.00",
     ], {
-      timeout: 180000,
+      timeout: 600000,  // 10 minutes for larger models like Opus
       cwd: process.cwd(),
     })
 
