@@ -30,6 +30,8 @@ export function getProviderConfig(provider: string): { apiKey: string; baseUrl?:
       return { apiKey: config.openaiApiKey } // Filesystem uses OpenAI for memory extraction
     case "rag":
       return { apiKey: config.openaiApiKey } // RAG provider uses OpenAI for embeddings
+    case "local-engram":
+      return { apiKey: "", baseUrl: process.env.ENGRAM_API || "http://localhost:3470" }
     default:
       throw new Error(`Unknown provider: ${provider}`)
   }
