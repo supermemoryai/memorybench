@@ -190,6 +190,31 @@ export class LoCoMoBenchmark implements Benchmark {
       result = result.filter((q) => filter.questionTypes!.includes(q.questionType))
     }
 
+    // Filter by specific conversation/sample IDs
+    if (filter?.sampleIds?.length) {
+      result = result.filter((q) => filter.sampleIds!.some(id => q.questionId.startsWith(id)))
+    }
+
+    // Stratified sampling: N questions per conversation, spread across all convs
+    if (filter?.stratifyPerConv) {
+      const N = filter.stratifyPerConv
+      const byConv = new Map<string, UnifiedQuestion[]>()
+      for (const q of result) {
+        const convId = q.questionId.split('-q')[0] // "conv-26-q3" → "conv-26"
+        if (!byConv.has(convId)) byConv.set(convId, [])
+        byConv.get(convId)!.push(q)
+      }
+      const stratified: UnifiedQuestion[] = []
+      for (const [, qs] of byConv) {
+        // Take N evenly distributed questions from each conversation
+        const step = Math.max(1, Math.floor(qs.length / N))
+        for (let i = 0; i < qs.length && stratified.filter(q => q.questionId.startsWith(qs[0].questionId.split('-q')[0])).length < N; i += step) {
+          stratified.push(qs[i])
+        }
+      }
+      result = stratified
+    }
+
     if (filter?.offset) {
       result = result.slice(filter.offset)
     }

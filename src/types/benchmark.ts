@@ -9,6 +9,10 @@ export interface QuestionFilter {
   questionTypes?: string[]
   limit?: number
   offset?: number
+  /** Stratified sampling: N questions per conversation (spreads across all convs) */
+  stratifyPerConv?: number
+  /** Only include questions from these conversation/sample IDs */
+  sampleIds?: string[]
 }
 
 export interface Benchmark {

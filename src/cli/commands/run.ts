@@ -23,6 +23,8 @@ interface RunArgs {
   force?: boolean
   fromPhase?: PhaseId
   concurrency?: ConcurrencyConfig
+  stratifyPerConv?: number
+  sampleIds?: string[]
 }
 
 function generateRunId(): string {
@@ -50,6 +52,11 @@ export function parseRunArgs(args: string[]): RunArgs | null {
       parsed.answeringModel = args[++i]
     } else if (arg === "-l" || arg === "--limit") {
       parsed.limit = parseInt(args[++i], 10)
+    } else if (arg === "--stratify") {
+      parsed.stratifyPerConv = parseInt(args[++i], 10)
+    } else if (arg === "--conv") {
+      // --conv conv-26,conv-30 — filter to specific conversations
+      parsed.sampleIds = args[++i].split(',').map(s => s.trim())
     } else if (arg === "-s" || arg === "--sample") {
       parsed.sample = parseInt(args[++i], 10)
     } else if (arg === "--sample-type") {
@@ -209,5 +216,7 @@ export async function runCommand(args: string[]): Promise<void> {
     concurrency: parsed.concurrency,
     force: parsed.force,
     phases,
+    stratifyPerConv: parsed.stratifyPerConv,
+    sampleIds: parsed.sampleIds,
   })
 }

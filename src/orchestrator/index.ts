@@ -29,6 +29,10 @@ export interface OrchestratorOptions {
   force?: boolean
   questionIds?: string[]
   phases?: ("ingest" | "indexing" | "search" | "answer" | "evaluate" | "report")[]
+  /** Stratified sampling: N questions per conversation across all 10 LoCoMo convs */
+  stratifyPerConv?: number
+  /** Only run questions from these conversation IDs (e.g. ["conv-26", "conv-30"]) */
+  sampleIds?: string[]
 }
 
 function selectQuestionsBySampling(
@@ -138,7 +142,10 @@ export class Orchestrator {
 
     const benchmark = createBenchmark(benchmarkName)
     await benchmark.load()
-    const allQuestions = benchmark.getQuestions()
+    const allQuestions = benchmark.getQuestions({
+      stratifyPerConv: options.stratifyPerConv,
+      sampleIds: options.sampleIds,
+    })
 
     if (this.checkpointManager.exists(runId) && !isNewRun) {
       checkpoint = this.checkpointManager.load(runId)!
