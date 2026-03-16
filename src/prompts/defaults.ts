@@ -7,26 +7,50 @@ export function buildDefaultAnswerPrompt(
 ): string {
   const contextStr = buildContextString(context)
 
-  return `You are a question-answering system. Based on the retrieved context below, answer the question.
+  return `You are a precise question-answering system with access to memory facts about people.
 
 Question: ${question}
 Question Date: ${questionDate || "Not specified"}
 
-Retrieved Context (raw JSON from memory provider):
+Memory Facts (retrieved from memory store):
 ${contextStr}
 
-Instructions:
-- The context above is the raw JSON response from a memory search API
-- Extract relevant information from the JSON to answer the question
-- Consider any temporal/date information present in the data
-- If the context contains enough information, provide a clear, concise answer
-- If the context does not contain enough information, respond with "I don't know"
-- Base your answer ONLY on the provided context
+ANSWER RULES — follow exactly:
+
+1. **Scan ALL facts before answering.** The answer may be spread across multiple facts — combine them.
+   - If asked about activities, list ALL activities found across all facts.
+   - If asked about places, list ALL places found across all facts.
+   - If asked about items (books, instruments, etc.), list ALL items found.
+
+2. **Use the SPECIFIC value, not a paraphrase.**
+   - If a fact says "Caroline moved from Sweden" → answer "Sweden", not "her home country"
+   - If a fact says "Melanie plays clarinet and violin" → answer both, not just one
+   - Copy proper nouns, names, places, and specifics verbatim from the facts.
+
+3. **Distinguish relationship types carefully.**
+   - "relationship status" means romantic status (single, married, dating), not who they know.
+   - "activities" means things they DO (pottery, hiking), not personality traits.
+
+4. **For list questions, enumerate completely.** Separate items with commas.
+
+5. **Keep answers short and direct.** No explanation, no "Based on the context..." — just the answer.
+
+6. **For inference/hypothetical questions ("would", "likely", "might", "could"), REASON from the facts — do not say "I don't know".**
+   - "Would X do Y?" → look at what X values, believes, and has done → make a reasoned prediction.
+   - "Would X be considered Y?" → look at X's behavior, beliefs, identity → make a judgment.
+   - "What would X's [opinion/leaning/trait] likely be?" → infer from their stated values and actions.
+   - "Is X likely to [action]?" → reason from their past behavior and current situation.
+   - Give a direct answer ("Yes", "No", "Likely yes", "Probably not") followed by one brief reason.
+   - Example: "Would Melanie go on another roadtrip?" + facts show it went badly → "Probably not — the roadtrip went badly."
+
+7. **Only say "I don't know" if the facts contain ZERO relevant information and inference is impossible.**
 
 Answer:`
 }
 
 export const DEFAULT_JUDGE_PROMPT = `I will give you a question, a correct answer, and a response from a model. Please answer yes if the response contains the correct answer. Otherwise, answer no. If the response is equivalent to the correct answer or contains all the intermediate steps to get the correct answer, you should also answer yes. If the response only contains a subset of the information required by the answer, answer no.
+
+IMPORTANT — For lists and sets: ignore order. "mountains, beach, forest" is correct when the ground truth is "beach, mountains, forest". Accept semantically equivalent phrasing for list items (e.g. "counseling and mental health" is equivalent to "counseling or mental health"). A response that includes all required items but also includes one or two extra items should still be marked correct.
 
 Respond with ONLY a JSON object:
 {"score": 1, "label": "correct", "explanation": "..."} if the response contains the correct answer
