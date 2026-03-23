@@ -164,7 +164,7 @@ export default function QuestionDetailPage() {
         >
           <div className="flex items-center justify-between mb-2">
             <h3 className="text-xs text-text-muted uppercase tracking-wide">Model Answer</h3>
-            {question.phases?.answer?.promptTokens && (
+            {question.phases?.answer?.promptTokens != null && (
               <span className="text-xs text-text-muted font-mono">
                 {question.phases.answer.promptTokens.toLocaleString()} tokens
               </span>

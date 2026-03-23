@@ -23,6 +23,7 @@
   },
   "devDependencies": {
     "@types/bun": "^1.2.14",
+    "@types/node": "^25.0.0",
     "prettier": "^3.7.4",
     "typescript": "^5.9.3"
   }

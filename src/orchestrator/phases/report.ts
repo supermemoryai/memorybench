@@ -197,9 +197,10 @@ export function generateReport(benchmark: Benchmark, checkpoint: RunCheckpoint):
     if (!qCheckpoint) continue
     const answerPhase = qCheckpoint.phases.answer
     if (answerPhase.status === "completed") {
-      if (answerPhase.promptTokens) allPromptTokens.push(answerPhase.promptTokens)
-      if (answerPhase.basePromptTokens) allBasePromptTokens.push(answerPhase.basePromptTokens)
-      if (answerPhase.contextTokens) allContextTokens.push(answerPhase.contextTokens)
+      if (answerPhase.promptTokens != null) allPromptTokens.push(answerPhase.promptTokens)
+      if (answerPhase.basePromptTokens != null)
+        allBasePromptTokens.push(answerPhase.basePromptTokens)
+      if (answerPhase.contextTokens != null) allContextTokens.push(answerPhase.contextTokens)
     }
   }
 
@@ -213,12 +214,12 @@ export function generateReport(benchmark: Benchmark, checkpoint: RunCheckpoint):
       basePromptTokens: totalBasePromptTokens,
       contextTokens: totalContextTokens,
       avgTokensPerQuestion: Math.round(totalTokens / allPromptTokens.length),
-      avgBasePromptTokens: allBasePromptTokens.length > 0
-        ? Math.round(totalBasePromptTokens / allBasePromptTokens.length)
-        : 0,
-      avgContextTokens: allContextTokens.length > 0
-        ? Math.round(totalContextTokens / allContextTokens.length)
-        : 0,
+      avgBasePromptTokens:
+        allBasePromptTokens.length > 0
+          ? Math.round(totalBasePromptTokens / allBasePromptTokens.length)
+          : 0,
+      avgContextTokens:
+        allContextTokens.length > 0 ? Math.round(totalContextTokens / allContextTokens.length) : 0,
     }
   }
 
@@ -229,9 +230,17 @@ export function generateReport(benchmark: Benchmark, checkpoint: RunCheckpoint):
   const searchLatencyStats = calculateLatencyStats(searchDurations)
   const qualityPct = Math.round(accuracy * 100)
   const avgLatency = searchLatencyStats.mean
-  const memscore = tokenMetrics
-    ? `${qualityPct}% / ${avgLatency}ms / ${tokenMetrics.avgContextTokens}tok`
-    : undefined
+
+  let memscore: string | undefined
+  let memscoreComponents: { quality: number; latencyMs: number; contextTokens: number } | undefined
+  if (tokenMetrics) {
+    memscoreComponents = {
+      quality: qualityPct,
+      latencyMs: avgLatency,
+      contextTokens: tokenMetrics.avgContextTokens,
+    }
+    memscore = `${qualityPct}% / ${avgLatency}ms / ${tokenMetrics.avgContextTokens}tok`
+  }
 
   const result: BenchmarkResult = {
     provider: checkpoint.provider,
@@ -256,6 +265,7 @@ export function generateReport(benchmark: Benchmark, checkpoint: RunCheckpoint):
     },
     tokens: tokenMetrics,
     memscore,
+    memscoreComponents,
     retrieval: overallRetrieval,
     byQuestionType,
     questionTypeRegistry: benchmark.getQuestionTypes(),
@@ -305,7 +315,9 @@ export function printReport(result: BenchmarkResult): void {
     console.log("")
     console.log(`  Quality:  ${qualityPct}%`)
     console.log(`  Latency:  ${avgLatency}ms (avg)`)
-    console.log(`  Tokens:   ${result.tokens.avgContextTokens.toLocaleString()} (avg context sent to answering model)`)
+    console.log(
+      `  Tokens:   ${result.tokens.avgContextTokens.toLocaleString()} (avg context sent to answering model)`
+    )
     console.log("")
     console.log(`  MemScore: ${result.memscore}`)
   }

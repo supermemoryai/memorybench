@@ -123,6 +123,7 @@ export interface BenchmarkResult {
   }
   tokens?: TokenMetrics
   memscore?: string
+  memscoreComponents?: { quality: number; latencyMs: number; contextTokens: number }
   retrieval?: RetrievalAggregates
   byQuestionType: Record<string, QuestionTypeStats>
   questionTypeRegistry?: QuestionTypeRegistry
