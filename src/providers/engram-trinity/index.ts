@@ -24,8 +24,6 @@ import type { UnifiedSession } from '../../types/unified'
 import { Engram } from '@cartisien/engram'
 import { Cogito } from '@cartisien/cogito'
 import { TraceType } from '@cartisien/cogito'
-import { open } from 'sqlite'
-import sqlite3 from 'sqlite3'
 import { existsSync, mkdirSync } from 'fs'
 import { dirname } from 'path'
 
@@ -64,9 +62,9 @@ function buildFtsQuery(keywords: string[]): string {
   return keywords.map(k => `"${k}"`).join(' OR ')
 }
 
-// Single shared Engram instance + raw DB connection for direct queries
+// Single shared Engram instance — FTS queries use its internal db to avoid
+// dual-connection WAL snapshot issues that caused 0-result searches in k100-fixed.
 let engram: Engram | null = null
-let rawDb: Awaited<ReturnType<typeof open>> | null = null
 
 // Fix 3: Cogito instances keyed by convId (e.g. "conv-26"), not containerTag.
 // One wake/sleep per conversation instead of one per question (~7 vs ~1194 cycles).
@@ -94,17 +92,16 @@ async function getEngram(): Promise<Engram> {
   return engram
 }
 
-async function getRawDb() {
-  if (rawDb) return rawDb
-  await getEngram() // ensure DB and FTS5 tables are initialized first
-  rawDb = await open({ filename: DB_PATH, driver: sqlite3.Database })
-  return rawDb
+// Get Engram's internal db handle — single connection avoids WAL snapshot issues.
+async function getDb() {
+  const e = await getEngram()
+  return (e as any).db
 }
 
 // Direct FTS5 search with OR semantics — bypasses Engram's AND-only FTS path.
 // Also unions the cogito:state session (Fix 2) for additional recall coverage.
 async function ftsSearch(sessionId: string, query: string, limit: number) {
-  const db = await getRawDb()
+  const db = await getDb()
   const keywords = extractKeywords(query)
 
   // cogito:state session pattern — traces written by Cogito during ingest
