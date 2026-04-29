@@ -44,6 +44,11 @@ export function buildStage1Prompt(
     ? `\n8. KNOWLEDGE UPDATE (REQUIRED): The question asks about the user's CURRENT state after one or more changes. When multiple evidence fragments give different values for the same fact, the fragment with the MOST RECENT [Recorded: ...] date is the current truth — always prefer it over older fragments. Explicitly identify the timeline: "Earlier [date]: X → Later [date]: Y → Current answer: Y".`
     : ''
 
+  const isAggQ = questionType === 'multi-session' || /how (many|much) total|in total|altogether|combined|sum|average age|add up/i.test(question)
+  const aggregationInstruction = isAggQ
+    ? `\n8. AGGREGATION (REQUIRED): This question asks for a total, count, or average across multiple events or sessions. You MUST scan EVERY evidence fragment and add up ALL matching values — do not stop at the first number. List each contributing fact and its value, then sum them. If a fact appears in multiple fragments, count it only once. If a specific fact the question asks about is not present in any fragment, say "not enough information" — do not infer from related but different facts.`
+    : ''
+
   return `You are an expert analysis engine. Answer the question using ONLY the provided Verbatim Evidence.
 
 Question: ${question}
@@ -59,7 +64,7 @@ INSTRUCTIONS:
 4. Extract the answer from Verbatim Evidence, not Fact Summary. Summaries are only for context (who "she" is, etc.).
 5. Use SPECIFIC values verbatim — "Sweden" not "her home country", "clarinet and violin" not just one.
 6. For inference/hypothetical questions, reason from facts and give a direct answer + one brief reason.
-7. COMPLETENESS: If the question asks about activities, hobbies, interests, preferences, or any attribute that could have multiple answers, enumerate ALL items found across ALL evidence. Missing items counts as wrong.${listInstruction}${preferenceInstruction}${updateInstruction}
+7. COMPLETENESS: If the question asks about activities, hobbies, interests, preferences, or any attribute that could have multiple answers, enumerate ALL items found across ALL evidence. Missing items counts as wrong.${listInstruction}${preferenceInstruction}${updateInstruction}${aggregationInstruction}
 
 MULTI-HOP EXAMPLE:
 Q: "When did Alex start volunteering at the shelter?"
