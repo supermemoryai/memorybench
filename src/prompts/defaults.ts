@@ -39,6 +39,11 @@ export function buildStage1Prompt(
     ? `\n8. PERSONALIZATION (REQUIRED): This is a preference/advice question. You MUST cite the specific things the user already mentioned in their memories — named items, apps, tools, experiences, goals. Generic advice that could apply to anyone is WRONG. If the user already owns something, don't suggest they buy it — tell them how to use it. Reference their exact words where possible.`
     : ''
 
+  const isUpdateQ = questionType === 'knowledge-update'
+  const updateInstruction = isUpdateQ
+    ? `\n8. KNOWLEDGE UPDATE (REQUIRED): The question asks about the user's CURRENT state after one or more changes. When multiple evidence fragments give different values for the same fact, the fragment with the MOST RECENT [Recorded: ...] date is the current truth — always prefer it over older fragments. Explicitly identify the timeline: "Earlier [date]: X → Later [date]: Y → Current answer: Y".`
+    : ''
+
   return `You are an expert analysis engine. Answer the question using ONLY the provided Verbatim Evidence.
 
 Question: ${question}
@@ -54,7 +59,7 @@ INSTRUCTIONS:
 4. Extract the answer from Verbatim Evidence, not Fact Summary. Summaries are only for context (who "she" is, etc.).
 5. Use SPECIFIC values verbatim — "Sweden" not "her home country", "clarinet and violin" not just one.
 6. For inference/hypothetical questions, reason from facts and give a direct answer + one brief reason.
-7. COMPLETENESS: If the question asks about activities, hobbies, interests, preferences, or any attribute that could have multiple answers, enumerate ALL items found across ALL evidence. Missing items counts as wrong.${listInstruction}${preferenceInstruction}
+7. COMPLETENESS: If the question asks about activities, hobbies, interests, preferences, or any attribute that could have multiple answers, enumerate ALL items found across ALL evidence. Missing items counts as wrong.${listInstruction}${preferenceInstruction}${updateInstruction}
 
 MULTI-HOP EXAMPLE:
 Q: "When did Alex start volunteering at the shelter?"
