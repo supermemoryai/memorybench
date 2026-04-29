@@ -15,17 +15,28 @@ export function detectListQuestion(question: string): boolean {
  * Stage 2: Verify draft against evidence (called separately in answer.ts).
  */
 
+export function detectPreferenceQuestion(question: string): boolean {
+  const q = question.toLowerCase()
+  return /any (tips|advice|suggestions?|recommend|ideas)|what (should|would|do) (i|you)|do you think|should i|could you (suggest|recommend)|what.*(look for|consider|try)/i.test(q)
+}
+
 export function buildStage1Prompt(
   question: string,
   context: unknown[],
   questionDate?: string,
-  sessionDateMap?: Record<string, string>
+  sessionDateMap?: Record<string, string>,
+  questionType?: string,
 ): string {
   const contextStr = buildReformattedContextWithDates(context, sessionDateMap)
   const listExhaustEnabled = process.env.ENGRAM_LIST_EXHAUST !== '0'
   const isListQ = listExhaustEnabled && detectListQuestion(question)
   const listInstruction = isListQ
     ? `\n7. LIST QUESTIONS: This question asks for multiple items — enumerate ALL items found across ALL evidence fragments. Do not stop after the first match. Output as a comma-separated list. Missing even one item counts as a wrong answer.`
+    : ''
+
+  const isPrefQ = questionType === 'single-session-preference' || detectPreferenceQuestion(question)
+  const preferenceInstruction = isPrefQ
+    ? `\n8. PERSONALIZATION (REQUIRED): This is a preference/advice question. You MUST cite the specific things the user already mentioned in their memories — named items, apps, tools, experiences, goals. Generic advice that could apply to anyone is WRONG. If the user already owns something, don't suggest they buy it — tell them how to use it. Reference their exact words where possible.`
     : ''
 
   return `You are an expert analysis engine. Answer the question using ONLY the provided Verbatim Evidence.
@@ -43,7 +54,7 @@ INSTRUCTIONS:
 4. Extract the answer from Verbatim Evidence, not Fact Summary. Summaries are only for context (who "she" is, etc.).
 5. Use SPECIFIC values verbatim — "Sweden" not "her home country", "clarinet and violin" not just one.
 6. For inference/hypothetical questions, reason from facts and give a direct answer + one brief reason.
-7. COMPLETENESS: If the question asks about activities, hobbies, interests, preferences, or any attribute that could have multiple answers, enumerate ALL items found across ALL evidence. Missing items counts as wrong.${listInstruction}
+7. COMPLETENESS: If the question asks about activities, hobbies, interests, preferences, or any attribute that could have multiple answers, enumerate ALL items found across ALL evidence. Missing items counts as wrong.${listInstruction}${preferenceInstruction}
 
 MULTI-HOP EXAMPLE:
 Q: "When did Alex start volunteering at the shelter?"
