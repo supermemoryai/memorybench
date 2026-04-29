@@ -8,7 +8,7 @@ import { createBenchmark } from "../benchmarks"
 import { createJudge } from "../judges"
 import { CheckpointManager } from "./checkpoint"
 import { getProviderConfig, getJudgeConfig } from "../utils/config"
-import { resolveModel } from "../utils/models"
+import { resolveModel, DEFAULT_JUDGE_MODELS } from "../utils/models"
 import { logger } from "../utils/logger"
 import { runIngestPhase } from "./phases/ingest"
 import { runIndexingPhase } from "./phases/indexing"
@@ -91,14 +91,15 @@ export class Orchestrator {
       phases = ["ingest", "indexing", "search", "answer", "evaluate", "report"],
     } = options
 
-    const judgeModelInfo = resolveModel(judgeModel)
-    const judgeName = judgeModelInfo.provider as JudgeName
+    let judgeModelInfo = resolveModel(judgeModel)
+    let judgeName = judgeModelInfo.provider as JudgeName
+
+    // Defer judge determination until after checkpoint load (for resume)
+    // We'll set the final judgeName after checking if we're resuming
 
     logger.info(`Starting MemoryBench run: ${providerName} + ${benchmarkName}`)
     logger.info(`Run ID: ${runId}`)
-    logger.info(
-      `Judge: ${judgeModelInfo.displayName} (${judgeModelInfo.id}), Answering Model: ${answeringModel}`
-    )
+    // Judge info logged after checkpoint check below
     logger.info(`Force: ${force}, Phases: ${phases?.join(", ") || "all"}`)
     if (sampling) {
       logger.info(`Sampling config received: ${JSON.stringify(sampling)}`)
@@ -213,6 +214,22 @@ export class Orchestrator {
       }
 
       this.checkpointManager.updateStatus(checkpoint, "running")
+
+      // Use checkpoint's stored judge when resuming, unless user explicitly provided a different judge
+      if (checkpoint.judge) {
+        const resolvedProvider = judgeModelInfo.provider as JudgeName
+        if (resolvedProvider !== checkpoint.judge) {
+          // User provided a different judge via CLI - use that instead
+          judgeName = resolvedProvider
+          logger.info(`Switching judge from ${checkpoint.judge} to ${judgeName} (user override)`)
+        } else {
+          // Use checkpoint's judge and resolve its default model
+          judgeName = checkpoint.judge as JudgeName
+          const defaultJudgeModel = DEFAULT_JUDGE_MODELS[judgeName] || judgeModel
+          judgeModelInfo = resolveModel(defaultJudgeModel)
+        }
+        logger.info(`Resuming with checkpoint judge: ${judgeName} (${judgeModelInfo.displayName})`)
+      }
     } else {
       logger.info(
         `New run path: isNewRun=${isNewRun}, sampling=${JSON.stringify(sampling)}, limit=${limit}`
@@ -249,11 +266,17 @@ export class Orchestrator {
           question: q.question,
           groundTruth: q.groundTruth,
           questionType: q.questionType,
+          questionDate: q.metadata?.questionDate as string | undefined,
         })
       }
 
       this.checkpointManager.updateStatus(checkpoint, "running")
     }
+
+    // Log judge info after checkpoint resume check
+    logger.info(
+      `Judge: ${judgeModelInfo.displayName} (${judgeModelInfo.id}), Answering Model: ${answeringModel}`
+    )
 
     const provider = createProvider(providerName)
     await provider.initialize(getProviderConfig(providerName))
