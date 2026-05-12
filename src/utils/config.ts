@@ -6,6 +6,8 @@ export interface Config {
   openaiApiKey: string
   anthropicApiKey: string
   googleApiKey: string
+  sandraUrl: string
+  sandraToken: string
 }
 
 export const config: Config = {
@@ -16,9 +18,15 @@ export const config: Config = {
   openaiApiKey: process.env.OPENAI_API_KEY || "",
   anthropicApiKey: process.env.ANTHROPIC_API_KEY || "",
   googleApiKey: process.env.GOOGLE_API_KEY || "",
+  sandraUrl: process.env.SANDRA_URL || "http://localhost:8090/mcp",
+  sandraToken: process.env.SANDRA_TOKEN || "",
 }
 
-export function getProviderConfig(provider: string): { apiKey: string; baseUrl?: string } {
+export function getProviderConfig(provider: string): {
+  apiKey: string
+  baseUrl?: string
+  token?: string
+} {
   switch (provider) {
     case "supermemory":
       return { apiKey: config.supermemoryApiKey, baseUrl: config.supermemoryBaseUrl }
@@ -30,6 +38,14 @@ export function getProviderConfig(provider: string): { apiKey: string; baseUrl?:
       return { apiKey: config.openaiApiKey } // Filesystem uses OpenAI for memory extraction
     case "rag":
       return { apiKey: config.openaiApiKey } // RAG provider uses OpenAI for embeddings
+    case "sandra":
+      // Sandra's API key slot carries ANTHROPIC_API_KEY (used by the
+      // ingestion extractor). baseUrl + token address the MCP HTTP server.
+      return {
+        apiKey: config.anthropicApiKey,
+        baseUrl: config.sandraUrl,
+        token: config.sandraToken,
+      }
     default:
       throw new Error(`Unknown provider: ${provider}`)
   }

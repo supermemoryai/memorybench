@@ -47,4 +47,4 @@ export interface Provider {
   clear(containerTag: string): Promise<void>
 }
 
-export type ProviderName = "supermemory" | "mem0" | "zep" | "filesystem" | "rag"
+export type ProviderName = "supermemory" | "mem0" | "zep" | "filesystem" | "rag" | "sandra"

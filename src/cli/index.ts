@@ -77,12 +77,19 @@ Available providers for storing and retrieving memories:
                  Extracts memories via LLM, chunks + embeds extracted content, hybrid BM25 + vector search.
                  Requires: OPENAI_API_KEY (for memory extraction via gpt-4o-mini + embeddings)
 
+  sandra         Sandra - Semantic graph database with typed refs and entity factories.
+                 Extracts entities + facts per session via Claude, pushes one sandra_batch per session,
+                 retrieves via semantic search on the lme_fact factory scoped by instance_id.
+                 Requires: ANTHROPIC_API_KEY (extractor) + SANDRA_URL (MCP HTTP server, default http://localhost:8090/mcp)
+                 Optional: SANDRA_TOKEN (bearer token for auth), SANDRA_EXTRACTOR_MODEL (default claude-haiku-4-5-20251001)
+
 Usage:
   -p supermemory    Use Supermemory as the memory provider
   -p mem0           Use Mem0 as the memory provider
   -p zep            Use Zep as the memory provider
   -p filesystem     Use file-based memory (CLAUDE.md style)
   -p rag            Use hybrid RAG memory (OpenClaw/QMD style)
+  -p sandra         Use Sandra semantic graph database
 `)
 }
 
