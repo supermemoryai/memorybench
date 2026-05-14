@@ -20,7 +20,8 @@ A pluggable benchmarking framework for evaluating memory and context systems.
 ┌─────────────┐    ┌─────────────┐    ┌─────────────┐
 │  Benchmarks │    │  Providers  │    │   Judges    │
 │  (LoCoMo,   │    │ (Supermem,  │    │  (GPT-4o,   │
-│  LongMem..) │    │  Mem0, Zep) │    │  Claude..)  │
+│  LongMem..) │    │  Mem0, Zep, │    │  Claude..)  │
+│             │    │  Memento)   │    │             │
 └──────┬──────┘    └──────┬──────┘    └──────┬──────┘
        └──────────────────┼──────────────────┘
                          ▼
@@ -48,6 +49,14 @@ bun run src/index.ts run -p supermemory -b locomo
 SUPERMEMORY_API_KEY=
 MEM0_API_KEY=
 ZEP_API_KEY=
+# Memento: no API key — runs as a local stdio subprocess. The provider
+# distils each session through an LLM (the configured answering model
+# by default) before writing to Memento. Optional knobs:
+#   MEMENTO_BIN=<command>           (default: "npx -y @psraghuveer/memento")
+#   MEMENTO_BENCH_DB=<path>         (default: /tmp/memento-bench-<ts>.db)
+#   MEMENTO_DISTILL_MODEL=<alias>   (default: memorybench answering model)
+#   MEMENTO_BENCH_SEARCH_LIMIT=<n>  (default: 30)
+#   MEMENTO_AWAIT_INDEXING_MS=<ms>  (default: 180000)
 
 # Judges (at least one)
 OPENAI_API_KEY=
@@ -73,7 +82,7 @@ GOOGLE_API_KEY=
 ## Options
 
 ```
--p, --provider         Memory provider (supermemory, mem0, zep)
+-p, --provider         Memory provider (supermemory, mem0, zep, memento)
 -b, --benchmark        Benchmark (locomo, longmemeval, convomem)
 -j, --judge            Judge model (gpt-4o, sonnet-4, gemini-2.5-flash, etc.)
 -r, --run-id           Run identifier (auto-generated if omitted)

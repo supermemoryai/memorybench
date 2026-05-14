@@ -131,10 +131,28 @@ export const MODEL_CONFIGS: Record<string, ModelConfig> = {
   },
 
   // Anthropic - All Claude models (support temperature)
+  "opus-4.6": {
+    id: "claude-opus-4-6",
+    provider: "anthropic",
+    displayName: "Claude Opus 4.6",
+    supportsTemperature: true,
+    defaultTemperature: 0,
+    maxTokensParam: "maxTokens",
+    defaultMaxTokens: 1000,
+  },
   "opus-4.5": {
     id: "claude-opus-4-5-20251101",
     provider: "anthropic",
     displayName: "Claude Opus 4.5",
+    supportsTemperature: true,
+    defaultTemperature: 0,
+    maxTokensParam: "maxTokens",
+    defaultMaxTokens: 1000,
+  },
+  "sonnet-4.6": {
+    id: "claude-sonnet-4-6",
+    provider: "anthropic",
+    displayName: "Claude Sonnet 4.6",
     supportsTemperature: true,
     defaultTemperature: 0,
     maxTokensParam: "maxTokens",

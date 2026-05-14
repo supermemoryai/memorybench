@@ -14,6 +14,7 @@
     "@ai-sdk/openai": "^2.0.88",
     "@anthropic-ai/tokenizer": "^0.0.4",
     "@getzep/zep-cloud": "^3.13.0",
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "ai": "^5.0.115",
     "drizzle-orm": "^0.45.1",
     "js-tiktoken": "^1.0.21",

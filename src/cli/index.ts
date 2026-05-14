@@ -77,12 +77,24 @@ Available providers for storing and retrieving memories:
                  Extracts memories via LLM, chunks + embeds extracted content, hybrid BM25 + vector search.
                  Requires: OPENAI_API_KEY (for memory extraction via gpt-4o-mini + embeddings)
 
+  memento        Memento - Local-first MCP memory layer (https://github.com/veerps57/memento)
+                 Spawns \`memento serve\` over stdio; hybrid FTS + local embeddings (bge-base-en-v1.5).
+                 The provider distils each session through an LLM before writing to Memento.
+                 No Memento-specific API key required (the distillation reuses the answering-model key).
+                 Configure via env:
+                   MEMENTO_BIN                 shell-like command (default: "npx -y @psraghuveer/memento")
+                   MEMENTO_BENCH_DB            SQLite path (default: /tmp/memento-bench-<ts>.db)
+                   MEMENTO_DISTILL_MODEL       model alias for distillation (default: memorybench answering model)
+                   MEMENTO_BENCH_SEARCH_LIMIT  top-K returned by search_memory (default: 30)
+                   MEMENTO_AWAIT_INDEXING_MS   polling deadline per question (default: 180000)
+
 Usage:
   -p supermemory    Use Supermemory as the memory provider
   -p mem0           Use Mem0 as the memory provider
   -p zep            Use Zep as the memory provider
   -p filesystem     Use file-based memory (CLAUDE.md style)
   -p rag            Use hybrid RAG memory (OpenClaw/QMD style)
+  -p memento        Use Memento as the memory provider (local MCP server)
 `)
 }
 
