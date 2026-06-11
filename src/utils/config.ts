@@ -30,6 +30,10 @@ export function getProviderConfig(provider: string): { apiKey: string; baseUrl?:
       return { apiKey: config.openaiApiKey } // Filesystem uses OpenAI for memory extraction
     case "rag":
       return { apiKey: config.openaiApiKey } // RAG provider uses OpenAI for embeddings
+    case "basic-memory":
+      // Basic Memory runs fully locally via the `bm` CLI; no API key required.
+      // BASIC_MEMORY_CLI optionally overrides the CLI entrypoint (e.g. "basic-memory").
+      return { apiKey: "none", baseUrl: process.env.BASIC_MEMORY_CLI || "bm" }
     default:
       throw new Error(`Unknown provider: ${provider}`)
   }

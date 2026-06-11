@@ -55,3 +55,44 @@ Example: See `src/providers/zep/prompts.ts`
 | `supermemory` | `supermemory` | Raw JSON sessions |
 | `mem0` | `mem0ai` | v2 API with graph |
 | `zep` | `@getzep/zep-cloud` | Graph-based, custom prompts |
+| `filesystem` | OpenAI | MEMORY.md-style: LLM-extracted Markdown + text search |
+| `rag` | OpenAI | OpenClaw/QMD-style: chunked + embedded, hybrid BM25 + vector |
+| `basic-memory` | `bm` CLI | Local Markdown knowledge graph; hybrid FTS + semantic search |
+
+## Basic Memory Setup
+
+[Basic Memory](https://github.com/basicmachines-co/basic-memory) is a local-first
+knowledge graph built from Markdown files. The provider drives the local `bm` CLI
+(`bm tool ... --local`, JSON output) — no API key or hosted service is required.
+
+1. **Install the CLI** (Python, via [uv](https://docs.astral.sh/uv/)):
+
+   ```bash
+   uv tool install basic-memory
+   # verify
+   bm --version
+   ```
+
+   If the executable is named differently or not on `PATH`, set `BASIC_MEMORY_CLI`
+   to the command name or absolute path (e.g. `export BASIC_MEMORY_CLI=basic-memory`).
+
+2. **Run the benchmark** — no key needed:
+
+   ```bash
+   bun run src/index.ts run -p basic-memory -b locomo -s 5
+   ```
+
+**How it works**
+
+- **Isolation:** the provider points `BASIC_MEMORY_CONFIG_DIR` / `BASIC_MEMORY_HOME`
+  at `data/providers/basic-memory`, and creates one throwaway BM **project per
+  `containerTag`**. It never touches your real `~/.config/basic-memory` config or
+  existing projects.
+- **Ingest:** each session is written as a Markdown note via `bm tool write-note`.
+- **Indexing:** `awaitIndexing` polls `bm status` until the project's file/db sync
+  settles, then runs `bm reindex --embeddings` to build vector embeddings (these lag
+  the FTS index, and are needed for semantic recall).
+- **Search:** `bm tool search-notes --hybrid` combines full-text and semantic search.
+- **Clear:** the BM project and its on-disk data are removed.
+
+The first search/reindex downloads the embedding model to a local cache (one-time).
