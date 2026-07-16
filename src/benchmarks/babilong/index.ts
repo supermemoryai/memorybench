@@ -13,15 +13,11 @@ import { logger } from "../../utils/logger"
 const DEFAULT_DATA_PATH = "./data/benchmarks/babilong"
 const DEFAULT_CONTEXT_LENGTH = "0k"
 
-const QA_FOLDERS = [
-  "qa1", "qa2", "qa3", "qa4", "qa5",
-  "qa6", "qa7", "qa8", "qa9", "qa10",
-  "qa11", "qa12", "qa13", "qa14", "qa15",
-  "qa16", "qa17", "qa18", "qa19", "qa20",
-]
+// qa subfolders (all use 0k format)
+const QA_FOLDERS = Array.from({ length: 20 }, (_, i) => `qa${i + 1}`)
 
 /**
- * BABILong question types - native task types from the dataset (official paper names).
+ * BABILong question types - native task types from the dataset.
  */
 export const BABILONG_QUESTION_TYPES: QuestionTypeRegistry = {
   qa1: { id: "qa1", alias: "single", description: "Single supporting fact" },
@@ -52,6 +48,106 @@ export class BABILongBenchmark implements Benchmark {
   private questions: UnifiedQuestion[] = []
   private sessionsMap: Map<string, UnifiedSession[]> = new Map()
   private dataPath: string = ""
+
+  async load(config?: BenchmarkConfig): Promise<void> {
+    this.dataPath = config?.dataPath || DEFAULT_DATA_PATH
+    const fullPath = join(process.cwd(), this.dataPath)
+
+    if (!existsSync(fullPath)) {
+      throw new Error(
+        `BABILong dataset not found at ${fullPath}. Download the dataset from https://huggingface.co/datasets/RMT-team/babilong and place the qa1-qa20 folders under ${this.dataPath}.`
+      )
+    }
+
+    this.loadQuestions(fullPath)
+  }
+
+  private loadQuestions(fullPath: string): void {
+    for (const qaFolder of QA_FOLDERS) {
+      const filePath = join(fullPath, qaFolder, `${DEFAULT_CONTEXT_LENGTH}.json`)
+
+      if (!existsSync(filePath)) {
+        logger.warn(`Missing file for ${qaFolder}: ${filePath}`)
+        continue
+      }
+
+      try {
+        const content = readFileSync(filePath, "utf8")
+        const items: BABILongItem[] = JSON.parse(content)
+
+        for (let i = 0; i < items.length; i++) {
+          this.processItem(items[i], qaFolder, i)
+        }
+      } catch (e) {
+        logger.error(`Failed to load BABILong data for ${qaFolder}: ${e}`)
+      }
+    }
+
+    logger.info(`Loaded ${this.questions.length} questions from BABILong`)
+  }
+
+  private processItem(item: BABILongItem, qaFolder: string, index: number): void {
+    const questionId = `babilong-${qaFolder}-${String(index).padStart(3, "0")}`
+
+    const session = this.extractSession(item, questionId)
+
+    this.questions.push({
+      questionId,
+      question: item.question,
+      questionType: qaFolder,
+      groundTruth: item.target,
+      haystackSessionIds: [session.sessionId],
+      metadata: {
+        task: qaFolder,
+        contextLength: DEFAULT_CONTEXT_LENGTH,
+      },
+    })
+
+    this.sessionsMap.set(questionId, [session])
+  }
+
+  private extractSession(item: BABILongItem, questionId: string): UnifiedSession {
+    const message: UnifiedMessage = {
+      role: "user",
+      content: item.input,
+    }
+
+    return {
+      sessionId: `${questionId}-session-0`,
+      messages: [message],
+    }
+  }
+
+  getQuestions(filter?: QuestionFilter): UnifiedQuestion[] {
+    let result = [...this.questions]
+
+    if (filter?.questionTypes?.length) {
+      result = result.filter((q) => filter.questionTypes!.includes(q.questionType))
+    }
+
+    if (filter?.offset) {
+      result = result.slice(filter.offset)
+    }
+
+    if (filter?.limit) {
+      result = result.slice(0, filter.limit)
+    }
+
+    return result
+  }
+
+  getHaystackSessions(questionId: string): UnifiedSession[] {
+    return this.sessionsMap.get(questionId) || []
+  }
+
+  getGroundTruth(questionId: string): string {
+    const question = this.questions.find((q) => q.questionId === questionId)
+    return question?.groundTruth || ""
+  }
+
+  getQuestionTypes(): QuestionTypeRegistry {
+    return BABILONG_QUESTION_TYPES
+  }
 }
 
 export default BABILongBenchmark
