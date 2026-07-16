@@ -2,11 +2,13 @@ import type { Benchmark, BenchmarkName } from "../types/benchmark"
 import { LoCoMoBenchmark } from "./locomo"
 import { LongMemEvalBenchmark } from "./longmemeval"
 import { ConvoMemBenchmark } from "./convomem"
+import { BABILongBenchmark } from "./babilong"
 
 const benchmarks: Record<BenchmarkName, new () => Benchmark> = {
   locomo: LoCoMoBenchmark,
   longmemeval: LongMemEvalBenchmark,
   convomem: ConvoMemBenchmark,
+  babilong: BABILongBenchmark,
 }
 
 export function createBenchmark(name: BenchmarkName): Benchmark {
@@ -21,4 +23,4 @@ export function getAvailableBenchmarks(): BenchmarkName[] {
   return Object.keys(benchmarks) as BenchmarkName[]
 }
 
-export { LoCoMoBenchmark, LongMemEvalBenchmark, ConvoMemBenchmark }
+export { LoCoMoBenchmark, LongMemEvalBenchmark, ConvoMemBenchmark, BABILongBenchmark }
