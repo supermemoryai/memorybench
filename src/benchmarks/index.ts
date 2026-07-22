@@ -2,7 +2,7 @@ import type { Benchmark, BenchmarkName } from "../types/benchmark"
 import { LoCoMoBenchmark } from "./locomo"
 import { LongMemEvalBenchmark } from "./longmemeval"
 import { ConvoMemBenchmark } from "./convomem"
-import { BABILongBenchmark } from "./babilong"
+import { BABILongBenchmark } from "./infinitebench"
 
 const benchmarks: Record<BenchmarkName, new () => Benchmark> = {
   locomo: LoCoMoBenchmark,
