@@ -151,15 +151,15 @@ Available benchmark datasets for evaluation:
                  Tests: user facts, assistant facts, preferences, implicit connections
                  Source: HuggingFace Salesforce/ConvoMem (downloaded on first use)
   
-  babilong      BABILong - Long-context retrieval benchmark
-                Tests: retrieval, multi-hop reasoning, deduction, counting, coreference
-                Source: HuggingFace RMT-team/babilong (local data required)
+  infinitebench  InfiniteBench - Long-context evaluation benchmark
+                 Tests: retrieval, reasoning, code, math, dialogue, long-document understanding
+                 Source: HuggingFace xinrongzhang2022/InfiniteBench (local data required)
 
 Usage:
   -b locomo        Run LoCoMo benchmark
   -b longmemeval   Run LongMemEval benchmark
   -b convomem      Run ConvoMem benchmark
-  -b babilong      Run BABILong benchmark
+  -b infinitebench Run InfiniteBench benchmark
 `)
 }
 
