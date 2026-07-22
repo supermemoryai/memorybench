@@ -29,6 +29,8 @@ const TASKS = [
   "longbook_qa_chn",
 ] as const
 
+type InfiniteBenchTask = (typeof TASKS)[number]
+
 export const INFINITEBENCH_QUESTION_TYPES: QuestionTypeRegistry = {
   passkey: {
     id: "passkey",
@@ -122,13 +124,22 @@ export class InfiniteBenchBenchmark implements Benchmark {
         continue
       }
 
+      let loaded = 0
+
       try {
         const lines = readFileSync(filePath, "utf8").split("\n").filter(Boolean)
 
         for (const line of lines) {
-          const item: InfiniteBenchItem = JSON.parse(line)
-          this.processItem(item, task)
+          try {
+            const item: InfiniteBenchItem = JSON.parse(line)
+            this.processItem(item, task)
+            loaded++
+          } catch (err) {
+            logger.warn(`Skipping malformed record in ${task}: ${err}`)
+          }
         }
+
+        logger.info(`Loaded ${loaded} ${task} questions`)
       } catch (error) {
         logger.error(`Failed to load ${task}: ${error}`)
       }
@@ -137,8 +148,8 @@ export class InfiniteBenchBenchmark implements Benchmark {
     logger.info(`Loaded ${this.questions.length} questions from InfiniteBench`)
   }
 
-  private processItem(item: InfiniteBenchItem, task: string): void {
-    const questionId = `infinitebench-${task}-${item.id}`
+  private processItem(item: InfiniteBenchItem, task: InfiniteBenchTask): void {
+    const questionId = `infinitebench-${task}-${String(item.id).padStart(6, "0")}`
 
     const session = this.createSession(item, questionId)
 
@@ -150,7 +161,9 @@ export class InfiniteBenchBenchmark implements Benchmark {
       haystackSessionIds: [session.sessionId],
       metadata: {
         task,
-        options: item.options,
+        hasOptions: (item.options?.length ?? 0) > 0,
+        answerCount: item.answer.length,
+        options: item.options ?? [],
       },
     })
 

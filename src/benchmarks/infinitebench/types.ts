@@ -3,5 +3,5 @@ export interface InfiniteBenchItem {
   context: string
   input: string
   answer: Array<string | number>
-  options: string[]
+  options?: string[]
 }
