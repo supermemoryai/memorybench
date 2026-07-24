@@ -23,7 +23,8 @@ import { logger } from "../../utils/logger"
 
 const DEFAULT_DATA_PATH = "./data/benchmarks/infinitebench"
 
-const DEFAULT_BASE_URL = "https://huggingface.co/datasets/xinrongzhang2022/InfiniteBench/resolve/main"
+const DEFAULT_BASE_URL =
+  "https://huggingface.co/datasets/xinrongzhang2022/InfiniteBench/resolve/main"
 
 const INDEX_FILENAME = "_index.json"
 
@@ -47,16 +48,40 @@ type InfiniteBenchTask = (typeof TASKS)[number]
 export const INFINITEBENCH_QUESTION_TYPES: QuestionTypeRegistry = {
   passkey: { id: "passkey", alias: "passkey", description: "Synthetic passkey retrieval" },
   kv_retrieval: { id: "kv_retrieval", alias: "kv", description: "Key-value retrieval" },
-  number_string: { id: "number_string", alias: "number-string", description: "Number string retrieval" },
+  number_string: {
+    id: "number_string",
+    alias: "number-string",
+    description: "Number string retrieval",
+  },
   code_run: { id: "code_run", alias: "code-run", description: "Code execution" },
   code_debug: { id: "code_debug", alias: "code-debug", description: "Code debugging" },
   math_find: { id: "math_find", alias: "math-find", description: "Mathematical search" },
   math_calc: { id: "math_calc", alias: "math-calc", description: "Mathematical calculation" },
-  longdialogue_qa_eng: { id: "longdialogue_qa_eng", alias: "dialogue", description: "Long dialogue QA" },
-  longbook_qa_eng: { id: "longbook_qa_eng", alias: "book-qa", description: "Long book question answering" },
-  longbook_sum_eng: { id: "longbook_sum_eng", alias: "book-summary", description: "Long book summarization" },
-  longbook_choice_eng: { id: "longbook_choice_eng", alias: "book-choice", description: "Long book multiple choice" },
-  longbook_qa_chn: { id: "longbook_qa_chn", alias: "book-qa-zh", description: "Chinese long book QA" },
+  longdialogue_qa_eng: {
+    id: "longdialogue_qa_eng",
+    alias: "dialogue",
+    description: "Long dialogue QA",
+  },
+  longbook_qa_eng: {
+    id: "longbook_qa_eng",
+    alias: "book-qa",
+    description: "Long book question answering",
+  },
+  longbook_sum_eng: {
+    id: "longbook_sum_eng",
+    alias: "book-summary",
+    description: "Long book summarization",
+  },
+  longbook_choice_eng: {
+    id: "longbook_choice_eng",
+    alias: "book-choice",
+    description: "Long book multiple choice",
+  },
+  longbook_qa_chn: {
+    id: "longbook_qa_chn",
+    alias: "book-qa-zh",
+    description: "Chinese long book QA",
+  },
 }
 
 interface IndexEntry {
@@ -103,7 +128,9 @@ export class InfiniteBenchBenchmark implements Benchmark {
     const index = this.readIndex()
     if (index) {
       this.hydrateFromIndex(index, tasksToLoad)
-      logger.info(`Loaded ${this.questions.length} questions from cached index (no download needed)`)
+      logger.info(
+        `Loaded ${this.questions.length} questions from cached index (no download needed)`
+      )
       return
     }
 
@@ -116,7 +143,7 @@ export class InfiniteBenchBenchmark implements Benchmark {
     const entries: IndexEntry[] = this.readPartialIndexFromDisk()
 
     for (const task of tasksToLoad) {
-      if (entries.some((e) => e.metadata.task === task)) continue // already indexed from a prior partial run
+      if (entries.some((e) => e.metadata.task === task)) continue
       await this.indexTask(task, entries)
     }
 
@@ -124,7 +151,6 @@ export class InfiniteBenchBenchmark implements Benchmark {
     this.hydrateFromIndex(entries, tasksToLoad)
     logger.info(`Loaded ${this.questions.length} questions from InfiniteBench`)
   }
-
 
   private indexPath(): string {
     return join(this.fullPath, INDEX_FILENAME)
@@ -274,7 +300,7 @@ export class InfiniteBenchBenchmark implements Benchmark {
     })
 
     await pipeline(nodeStream, createWriteStream(tmpPath))
-    renameSync(tmpPath, filePath) // atomic-ish: never leave a half-written file at the real path
+    renameSync(tmpPath, filePath)
 
     logger.info(`Downloaded ${task}.jsonl (${(received / 1e6).toFixed(1)} MB)`)
   }
