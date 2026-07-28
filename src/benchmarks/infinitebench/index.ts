@@ -29,148 +29,107 @@ const TASKS = [
   "longbook_qa_chn",
 ] as const
 
-export const INFINITEBENCH_QUESTION_TYPES: QuestionTypeRegistry = {
-  passkey: {
-    id: "passkey",
-    alias: "passkey",
-    description: "Synthetic passkey retrieval",
-  },
-  kv_retrieval: {
-    id: "kv_retrieval",
-    alias: "kv",
-    description: "Key-value retrieval",
-  },
-  number_string: {
-    id: "number_string",
-    alias: "number-string",
-    description: "Number string retrieval",
-  },
-  code_run: {
-    id: "code_run",
-    alias: "code-run",
-    description: "Code execution",
-  },
-  code_debug: {
-    id: "code_debug",
-    alias: "code-debug",
-    description: "Code debugging",
-  },
-  math_find: {
-    id: "math_find",
-    alias: "math-find",
-    description: "Mathematical search",
-  },
-  math_calc: {
-    id: "math_calc",
-    alias: "math-calc",
-    description: "Mathematical calculation",
-  },
-  longdialogue_qa_eng: {
-    id: "longdialogue_qa_eng",
-    alias: "dialogue",
-    description: "Long dialogue QA",
-  },
-  longbook_qa_eng: {
-    id: "longbook_qa_eng",
-    alias: "book-qa",
-    description: "Long book question answering",
-  },
-  longbook_sum_eng: {
-    id: "longbook_sum_eng",
-    alias: "book-summary",
-    description: "Long book summarization",
-  },
-  longbook_choice_eng: {
-    id: "longbook_choice_eng",
-    alias: "book-choice",
-    description: "Long book multiple choice",
-  },
-  longbook_qa_chn: {
-    id: "longbook_qa_chn",
-    alias: "book-qa-zh",
-    description: "Chinese long book QA",
-  },
-}
+type InfiniteBenchTask = (typeof TASKS)[number]
+
+export const INFINITEBENCH_QUESTION_TYPES: QuestionTypeRegistry = Object.fromEntries(
+  TASKS.map((task) => [
+    task,
+    {
+      id: task,
+      alias: task,
+      description: `InfiniteBench ${task} task`,
+    },
+  ])
+)
 
 export class InfiniteBenchBenchmark implements Benchmark {
   name = "infinitebench"
 
   private questions: UnifiedQuestion[] = []
-  private sessionsMap: Map<string, UnifiedSession[]> = new Map()
-  private dataPath = ""
+  private sessions: Map<string, UnifiedSession[]> = new Map()
+
+  private dataPath = DEFAULT_DATA_PATH
 
   async load(config?: BenchmarkConfig): Promise<void> {
-    this.dataPath = config?.dataPath || DEFAULT_DATA_PATH
+    this.dataPath = config?.dataPath ?? DEFAULT_DATA_PATH
 
-    const fullPath = join(process.cwd(), this.dataPath)
+    const datasetPath = join(process.cwd(), this.dataPath)
 
-    if (!existsSync(fullPath)) {
-      throw new Error(
-        `InfiniteBench dataset not found at ${fullPath}. Download it from https://huggingface.co/datasets/xinrongzhang2022/InfiniteBench and place the JSONL files under ${this.dataPath}.`
-      )
+    if (!existsSync(datasetPath)) {
+      throw new Error(`InfiniteBench dataset missing: ${datasetPath}`)
     }
 
-    this.loadQuestions(fullPath)
+    this.loadDataset(datasetPath)
   }
 
-  private loadQuestions(fullPath: string): void {
+  private loadDataset(datasetPath: string): void {
     for (const task of TASKS) {
-      const filePath = join(fullPath, `${task}.jsonl`)
+      const file = join(datasetPath, `${task}.jsonl`)
 
-      if (!existsSync(filePath)) {
-        logger.warn(`Missing file for ${task}: ${filePath}`)
+      if (!existsSync(file)) {
+        logger.warn(`Skipping missing task file: ${file}`)
         continue
       }
 
-      try {
-        const lines = readFileSync(filePath, "utf8").split("\n").filter(Boolean)
+      const rows = readFileSync(file, "utf-8").split("\n").filter(Boolean)
 
-        for (const line of lines) {
-          const item: InfiniteBenchItem = JSON.parse(line)
-          this.processItem(item, task)
+      for (const row of rows) {
+        try {
+          const item: InfiniteBenchItem = JSON.parse(row)
+
+          this.addQuestion(item, task)
+        } catch (error) {
+          logger.error(`Failed parsing ${file}: ${error}`)
         }
-      } catch (error) {
-        logger.error(`Failed to load ${task}: ${error}`)
       }
     }
 
-    logger.info(`Loaded ${this.questions.length} questions from InfiniteBench`)
+    logger.info(`Loaded ${this.questions.length} InfiniteBench questions`)
   }
 
-  private processItem(item: InfiniteBenchItem, task: string): void {
+  private addQuestion(item: InfiniteBenchItem, task: InfiniteBenchTask): void {
     const questionId = `infinitebench-${task}-${item.id}`
 
-    const session = this.createSession(item, questionId)
+    const session = this.createSession(item.context, questionId)
 
-    this.questions.push({
+    const question: UnifiedQuestion = {
       questionId,
+
       question: item.input,
+
       questionType: task,
-      groundTruth: String(item.answer[0]),
+
+      groundTruth: item.answer.at(0) ?? "",
+
       haystackSessionIds: [session.sessionId],
+
       metadata: {
         task,
         options: item.options,
       },
-    })
+    }
 
-    this.sessionsMap.set(questionId, [session])
+    this.questions.push(question)
+
+    this.sessions.set(questionId, [session])
   }
 
-  private createSession(item: InfiniteBenchItem, questionId: string): UnifiedSession {
+  private createSession(context: string, questionId: string): UnifiedSession {
     const message: UnifiedMessage = {
       role: "user",
-      content: item.context,
+
+      content: context,
     }
 
     return {
-      sessionId: `${questionId}-session-0`,
+      sessionId: `${questionId}-session`,
+
       messages: [message],
     }
   }
 
   getQuestions(filter?: QuestionFilter): UnifiedQuestion[] {
-    let result = [...this.questions]
+    let result = this.questions
 
     if (filter?.questionTypes?.length) {
       result = result.filter((q) => filter.questionTypes!.includes(q.questionType))
@@ -188,12 +147,11 @@ export class InfiniteBenchBenchmark implements Benchmark {
   }
 
   getHaystackSessions(questionId: string): UnifiedSession[] {
-    return this.sessionsMap.get(questionId) || []
+    return this.sessions.get(questionId) ?? []
   }
 
   getGroundTruth(questionId: string): string {
-    const question = this.questions.find((q) => q.questionId === questionId)
-    return question?.groundTruth ?? ""
+    return this.questions.find((q) => q.questionId === questionId)?.groundTruth ?? ""
   }
 
   getQuestionTypes(): QuestionTypeRegistry {
