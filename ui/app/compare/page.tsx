@@ -3,7 +3,13 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from "react"
 import Link from "next/link"
 import { getCompares, deleteCompare, type CompareSummary } from "@/lib/api"
-import { formatDate, getStatusColor, cn } from "@/lib/utils"
+import {
+  formatDate,
+  getBenchmarkDisplayName,
+  getPipelineProgress,
+  getStatusColor,
+  cn,
+} from "@/lib/utils"
 import { FilterBar } from "@/components/filter-bar"
 import { DataTable, type Column } from "@/components/data-table"
 import { CompareActionsMenu } from "@/components/compare-actions-menu"
@@ -94,7 +100,10 @@ export default function ComparesPage() {
     })
     return Object.entries(counts).map(([value, count]) => ({
       value,
-      label: value,
+      label: getBenchmarkDisplayName(
+        value,
+        compares.find((compare) => compare.benchmark === value)?.benchmarkScope
+      ),
       count,
     }))
   }, [compares])
@@ -172,7 +181,9 @@ export default function ComparesPage() {
       {
         key: "benchmark",
         header: "Benchmark",
-        render: (compare) => <span className="capitalize">{compare.benchmark}</span>,
+        render: (compare) => (
+          <span>{getBenchmarkDisplayName(compare.benchmark, compare.benchmarkScope)}</span>
+        ),
       },
       {
         key: "status",
@@ -190,24 +201,13 @@ export default function ComparesPage() {
 
             for (const run of compare.runProgress) {
               const p = run.progress
-              const total = p?.total || 0
-              if (total > 0) {
-                totalPhasesCompleted +=
-                  (p.ingested || 0) +
-                  (p.indexed || 0) +
-                  (p.searched || 0) +
-                  (p.answered || 0) +
-                  (p.evaluated || 0)
-                totalPhases += 5 * total
-
-                // Count fully complete phases for this run
-                let runPhasesComplete = 0
-                if (p.ingested === total) runPhasesComplete++
-                if (p.indexed === total) runPhasesComplete++
-                if (p.searched === total) runPhasesComplete++
-                if (p.answered === total) runPhasesComplete++
-                if (p.evaluated === total) runPhasesComplete++
-                allRunsPhasesComplete += runPhasesComplete
+              const buildTotal = p.builds ?? p.total
+              const runTotalWork = buildTotal * 2 + p.total * 3
+              if (runTotalWork > 0) {
+                const runProgress = getPipelineProgress(p)
+                totalPhasesCompleted += runProgress.progress * runTotalWork
+                totalPhases += runTotalWork
+                allRunsPhasesComplete += runProgress.phasesFullyComplete
               }
             }
 

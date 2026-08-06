@@ -3,13 +3,28 @@
 import { useState, useEffect, useRef, useCallback } from "react"
 import Link from "next/link"
 import { useParams, useSearchParams, useRouter } from "next/navigation"
-import { getRun, getRunReport, stopRun, startRun, type RunDetail } from "@/lib/api"
-import { formatDate, getStatusColor, cn } from "@/lib/utils"
+import {
+  getRun,
+  getRunReport,
+  stopRun,
+  startRun,
+  type BenchmarkResult,
+  type RunDetail,
+} from "@/lib/api"
+import {
+  formatDate,
+  getBenchmarkDisplayName,
+  getStatusColor,
+  isEvaluationPassed,
+  cn,
+} from "@/lib/utils"
 import { PhaseProgress } from "@/components/phase-progress"
 import { QuestionList } from "@/components/question-list"
 import {
   StatsGrid,
   AccuracyByType,
+  BuildMetricsTable,
+  QuestionMetricsSummary,
   LatencyTable,
   RetrievalMetrics,
 } from "@/components/benchmark-results"
@@ -31,7 +46,7 @@ export default function RunDetailPage() {
     tabFromUrl && ["overview", "results"].includes(tabFromUrl) ? tabFromUrl : "overview"
 
   const [run, setRun] = useState<RunDetail | null>(null)
-  const [report, setReport] = useState<any>(null)
+  const [report, setReport] = useState<BenchmarkResult | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<Tab>(initialTab)
@@ -61,6 +76,9 @@ export default function RunDetailPage() {
         runId: run.runId,
         judgeModel: run.judge,
         answeringModel: run.answeringModel,
+        dataPath: run.dataPath,
+        datasetRevision: run.datasetRevision,
+        retrievalTopK: run.retrievalTopK,
       })
       await refreshData()
     } catch (e) {
@@ -193,7 +211,7 @@ export default function RunDetailPage() {
             </span>
             <span>
               <span className="text-text-muted">Benchmark:</span>{" "}
-              <span className="capitalize">{run.benchmark}</span>
+              <span>{getBenchmarkDisplayName(run.benchmark, run.benchmarkScope)}</span>
             </span>
           </div>
         </div>
@@ -202,9 +220,7 @@ export default function RunDetailPage() {
         <div className="flex flex-col items-center justify-center py-16 border border-border rounded-lg">
           <div className="w-10 h-10 border-2 border-accent border-t-transparent rounded-full animate-spin mb-4" />
           <p className="text-text-secondary text-lg">Loading benchmark dataset...</p>
-          <p className="text-text-muted text-sm mt-2">
-            This may take a moment for first-time downloads
-          </p>
+          <p className="text-text-muted text-sm mt-2">Validating benchmark data and run state</p>
         </div>
       </div>
     )
@@ -213,20 +229,48 @@ export default function RunDetailPage() {
   const allQuestions = Object.values(run.questions)
   // Only count questions that have been evaluated
   const evaluatedQuestions = allQuestions.filter((q) => q.phases.evaluate.status === "completed")
-  const failedQuestions = evaluatedQuestions.filter((q) => q.phases.evaluate.label === "incorrect")
+  const correctQuestionCount = evaluatedQuestions.filter((q) =>
+    isEvaluationPassed(q.phases.evaluate)
+  ).length
   const accuracy =
     report?.summary?.accuracy ??
-    (evaluatedQuestions.length > 0
-      ? (evaluatedQuestions.filter((q) => q.phases.evaluate.score === 1).length /
-          evaluatedQuestions.length) *
-        100
-      : 0)
+    report?.accuracy ??
+    (evaluatedQuestions.length > 0 ? correctQuestionCount / evaluatedQuestions.length : null)
+  const reportCorrectCount = report?.summary?.correctCount ?? report?.correctCount
+  const reportTotalQuestions = report?.summary?.totalQuestions ?? report?.totalQuestions
+  const primaryMetric = report?.quality?.primaryMetric
+  const averageScore = report?.summary?.averageScore
+  const combinedBeamScope = (report?.benchmarkScope?.includedTiers?.length ?? 0) > 1
+  const datasetIdentity = report?.datasetIdentity ?? run.datasetIdentity
+  const datasetFingerprint =
+    typeof datasetIdentity?.datasetFingerprint === "string"
+      ? datasetIdentity.datasetFingerprint
+      : undefined
+  const protocolIdentity = report?.protocolIdentity ?? run.protocolIdentity
+  const protocolLabel =
+    typeof protocolIdentity?.id === "string"
+      ? `${protocolIdentity.id}${typeof protocolIdentity.version === "string" ? `@${protocolIdentity.version}` : ""}`
+      : undefined
 
   // Find error from failed phases
   const runError = (() => {
+    const builds = Object.values(run.builds || {})
+    const usesSharedBuilds = builds.length > 0 || allQuestions.some((question) => question.buildId)
+    for (const build of builds) {
+      for (const phase of [build.ingest, build.indexing]) {
+        if (phase?.status === "failed" && phase.error) return phase.error
+      }
+    }
+
     for (const q of allQuestions) {
-      const phases = q.phases as Record<string, { status?: string; error?: string }>
-      for (const phase of ["ingest", "indexing", "search", "answer", "evaluate"]) {
+      if (q.buildId && !run.builds?.[q.buildId]) {
+        return `Question ${q.questionId} references missing build ${q.buildId}`
+      }
+      const phases = q.phases as unknown as Record<string, { status?: string; error?: string }>
+      const questionOwnedPhases = usesSharedBuilds
+        ? ["search", "answer", "evaluate"]
+        : ["ingest", "indexing", "search", "answer", "evaluate"]
+      for (const phase of questionOwnedPhases) {
         if (phases[phase]?.status === "failed" && phases[phase]?.error) {
           return phases[phase].error
         }
@@ -286,7 +330,7 @@ export default function RunDetailPage() {
             </span>
             <span>
               <span className="text-text-muted">Benchmark:</span>{" "}
-              <span className="capitalize">{run.benchmark}</span>
+              <span>{getBenchmarkDisplayName(run.benchmark, run.benchmarkScope)}</span>
             </span>
             <span>
               <span className="text-text-muted">Judge:</span> {run.judge}
@@ -344,13 +388,62 @@ export default function RunDetailPage() {
           )}
           <StatsGrid
             cards={[
+              ...(combinedBeamScope && report?.quality?.metrics.beamScore1M != null
+                ? [
+                    {
+                      label: "BEAM 1M score",
+                      value: report.quality.metrics.beamScore1M.toFixed(3),
+                      subtext: "official tier metric",
+                    },
+                  ]
+                : []),
+              ...(combinedBeamScope && report?.quality?.metrics.beamScore10M != null
+                ? [
+                    {
+                      label: "BEAM 10M score",
+                      value: report.quality.metrics.beamScore10M.toFixed(3),
+                      subtext: "official tier metric",
+                    },
+                  ]
+                : []),
+              ...(combinedBeamScope &&
+              report?.quality?.metrics.beamTierMacroAverageSecondary != null
+                ? [
+                    {
+                      label: "cross-tier macro",
+                      value: report.quality.metrics.beamTierMacroAverageSecondary.toFixed(3),
+                      subtext: "secondary MemoryBench aggregate",
+                    },
+                  ]
+                : []),
+              ...(primaryMetric && primaryMetric.key !== "accuracy"
+                ? [
+                    {
+                      label: primaryMetric.key.replace(/([a-z])([A-Z])/g, "$1 $2"),
+                      value: `${(primaryMetric.value * 100).toFixed(1)}%`,
+                      subtext: "official protocol metric",
+                    },
+                  ]
+                : []),
               {
-                label: "accuracy",
-                value: accuracy ? `${accuracy.toFixed(1)}%` : "—",
-                subtext: report
-                  ? `${report.summary.correctCount}/${report.summary.totalQuestions} correct`
-                  : undefined,
+                label:
+                  primaryMetric && primaryMetric.key !== "accuracy" ? "pass accuracy" : "accuracy",
+                value: accuracy !== null ? `${(accuracy * 100).toFixed(1)}%` : "—",
+                subtext:
+                  reportCorrectCount != null && reportTotalQuestions != null
+                    ? `${reportCorrectCount}/${reportTotalQuestions} correct`
+                    : evaluatedQuestions.length > 0
+                      ? `${correctQuestionCount}/${evaluatedQuestions.length} correct`
+                      : undefined,
               },
+              ...(averageScore != null
+                ? [
+                    {
+                      label: "average question score",
+                      value: averageScore.toFixed(3),
+                    },
+                  ]
+                : []),
               {
                 label: "questions",
                 value: run.summary.total,
@@ -366,10 +459,50 @@ export default function RunDetailPage() {
                 value: run.answeringModel || "—",
                 mono: true,
               },
+              ...(run.retrievalTopK != null
+                ? [
+                    {
+                      label: "retrieval top-k",
+                      value: run.retrievalTopK,
+                    },
+                  ]
+                : []),
+              ...(protocolLabel
+                ? [
+                    {
+                      label: "protocol",
+                      value: protocolLabel,
+                      mono: true,
+                    },
+                  ]
+                : []),
+              ...(datasetFingerprint
+                ? [
+                    {
+                      label: "dataset fingerprint",
+                      value: datasetFingerprint,
+                      mono: true,
+                    },
+                  ]
+                : []),
+              ...(report?.builds
+                ? [
+                    {
+                      label: "builds",
+                      value: report.builds.uniqueBuildCount,
+                      subtext: `${report.builds.sumContainerBuildWorkMs.toLocaleString()}ms total build work`,
+                    },
+                  ]
+                : []),
             ]}
           />
-          <AccuracyByType byQuestionType={report?.byQuestionType} />
-          <LatencyTable latency={report?.latency} />
+          <AccuracyByType
+            byQuestionType={report?.byQuestionType || {}}
+            qualityBySlice={report?.quality?.bySlice}
+          />
+          <BuildMetricsTable builds={report?.builds} />
+          <QuestionMetricsSummary metrics={report?.questionMetrics} costs={report?.costs} />
+          <LatencyTable latency={report?.latency || report?.latencyStats} />
           <RetrievalMetrics retrieval={report?.retrieval} byQuestionType={report?.byQuestionType} />
         </div>
       )}

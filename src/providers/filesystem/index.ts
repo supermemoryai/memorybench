@@ -8,13 +8,73 @@ import type {
   IngestResult,
   SearchOptions,
   IndexingProgressCallback,
+  ProviderSearchResponse,
 } from "../../types/provider"
-import type { UnifiedSession } from "../../types/unified"
+import type {
+  CanonicalIngestionDocument,
+  ProviderResultDropDiagnostic,
+  UnifiedSearchResult,
+} from "../../types/unified"
 import { logger } from "../../utils/logger"
-import { extractMemories } from "../../prompts/extraction"
+import { extractMemories, getMemoryExtractionConfigFingerprint } from "../../prompts/extraction"
+import { stableSha256 } from "../../utils/stable"
 import { FILESYSTEM_PROMPTS } from "./prompts"
+import {
+  assertResultBudget,
+  canonicalDocumentToSession,
+  rankResults,
+  recordResultDrop,
+  requireSearchLimit,
+  resolveDocumentDate,
+  createProviderSearchResponse,
+} from "../normalization"
 
 const BASE_DIR = join(process.cwd(), "data", "providers", "filesystem")
+
+interface FilesystemSearchCandidate {
+  id: string
+  sessionId: string
+  content: string
+  score: number
+  documentDate?: string
+}
+
+export function renderFilesystemMemoryFile(
+  sessionId: string,
+  documentDate: string | undefined,
+  extractedMemories: string
+): string {
+  const header = documentDate
+    ? `# Memory: ${sessionId}\n**Date:** ${documentDate}\n\n`
+    : `# Memory: ${sessionId}\n\n`
+  return header + extractedMemories
+}
+
+export function normalizeFilesystemSearchResults(
+  rawResults: FilesystemSearchCandidate[],
+  limit: number,
+  droppedResults: ProviderResultDropDiagnostic[] = []
+): UnifiedSearchResult[] {
+  requireSearchLimit(limit, "filesystem")
+  assertResultBudget(rawResults.length, limit, "filesystem")
+  const normalized: Omit<UnifiedSearchResult, "rank">[] = []
+  for (const [index, result] of rawResults.entries()) {
+    if (!result.content.trim()) {
+      recordResultDrop(droppedResults, index, "empty-text")
+      continue
+    }
+    normalized.push({
+      id: result.id,
+      text: result.content,
+      score: result.score,
+      sessionId: result.sessionId,
+      ...(result.documentDate ? { documentDate: result.documentDate } : {}),
+      provider: "filesystem",
+      resultType: "document",
+    })
+  }
+  return rankResults(normalized)
+}
 
 /**
  * Simple tokenizer: lowercase, split on non-alphanumeric, filter short tokens.
@@ -33,7 +93,10 @@ function tokenize(text: string): string[] {
  * Returns a score between 0 and 1 representing the fraction of query terms found,
  * with a small frequency bonus for repeated matches.
  */
-function scoreDocument(queryTerms: string[], docText: string): { score: number; matchCount: number } {
+function scoreDocument(
+  queryTerms: string[],
+  docText: string
+): { score: number; matchCount: number } {
   if (queryTerms.length === 0) return { score: 0, matchCount: 0 }
 
   const docLower = docText.toLowerCase()
@@ -77,6 +140,8 @@ function scoreDocument(queryTerms: string[], docText: string): { score: number; 
  */
 export class FilesystemProvider implements Provider {
   name = "filesystem"
+  adapterVersion = "2.0.0"
+  searchRequestStructure = { kind: "single" } as const
   prompts = FILESYSTEM_PROMPTS
   concurrency = {
     default: 50,
@@ -84,6 +149,17 @@ export class FilesystemProvider implements Provider {
   }
 
   private openai: ReturnType<typeof createOpenAI> | null = null
+
+  getIngestionConfigFingerprint(_config: ProviderConfig): string {
+    return stableSha256({
+      schemaVersion: 1,
+      provider: this.name,
+      adapterVersion: this.adapterVersion,
+      extractionConfigFingerprint: getMemoryExtractionConfigFingerprint(),
+      storage: "memory-markdown-plus-json-sidecar-v1",
+      documentId: "sanitized-customId",
+    })
+  }
 
   async initialize(config: ProviderConfig): Promise<void> {
     if (!config.apiKey || config.apiKey === "none") {
@@ -94,7 +170,10 @@ export class FilesystemProvider implements Provider {
     logger.info("Initialized Filesystem memory provider (MEMORY.md-style with LLM extraction)")
   }
 
-  async ingest(sessions: UnifiedSession[], options: IngestOptions): Promise<IngestResult> {
+  async ingest(
+    documents: CanonicalIngestionDocument[],
+    options: IngestOptions
+  ): Promise<IngestResult> {
     if (!this.openai) throw new Error("Provider not initialized")
 
     const containerDir = join(BASE_DIR, sanitizePath(options.containerTag))
@@ -103,22 +182,31 @@ export class FilesystemProvider implements Provider {
 
     const documentIds: string[] = []
 
-    for (const session of sessions) {
+    for (const document of documents) {
+      const session = canonicalDocumentToSession(document)
       const extractedMemories = await extractMemories(this.openai, session)
 
       // Build a memory file with date header + extracted content
-      const date =
-        (session.metadata?.formattedDate as string) ||
-        (session.metadata?.date as string) ||
-        "Unknown date"
-      const header = `# Memory: ${session.sessionId}\n**Date:** ${date}\n\n`
-      const content = header + extractedMemories
+      const date = document.metadata.documentDate
+      const content = renderFilesystemMemoryFile(
+        document.metadata.sessionId,
+        date,
+        extractedMemories
+      )
 
-      const safeId = sanitizePath(session.sessionId)
+      const safeId = sanitizePath(document.customId)
       const filePath = join(memoriesDir, `${safeId}.md`)
       await writeFile(filePath, content, "utf-8")
+      await writeFile(
+        join(memoriesDir, `${safeId}.json`),
+        JSON.stringify({
+          sessionId: document.metadata.sessionId,
+          ...(date ? { documentDate: date } : {}),
+        }),
+        "utf-8"
+      )
       documentIds.push(safeId)
-      logger.debug(`Extracted and stored memories for session ${session.sessionId}`)
+      logger.debug(`Extracted and stored memories for session ${document.metadata.sessionId}`)
     }
 
     return { documentIds }
@@ -137,7 +225,24 @@ export class FilesystemProvider implements Provider {
     })
   }
 
-  async search(query: string, options: SearchOptions): Promise<unknown[]> {
+  async search(query: string, options: SearchOptions): Promise<ProviderSearchResponse> {
+    const limit = requireSearchLimit(options.limit, this.name)
+    const respond = (raw: FilesystemSearchCandidate[]) => {
+      const droppedResults: ProviderResultDropDiagnostic[] = []
+      return createProviderSearchResponse({
+        results: normalizeFilesystemSearchResults(raw, limit, droppedResults),
+        requestedLimit: limit,
+        rawReturnedCount: raw.length,
+        droppedResults,
+        providerRequests: [
+          {
+            operation: "filesystem.scan",
+            limit,
+            parameters: { scoring: "term-coverage-frequency-v1" },
+          },
+        ],
+      })
+    }
     const containerDir = join(BASE_DIR, sanitizePath(options.containerTag))
     const memoriesDir = join(containerDir, "memories")
 
@@ -146,46 +251,71 @@ export class FilesystemProvider implements Provider {
       files = await readdir(memoriesDir)
     } catch {
       logger.warn(`No memories directory found for ${options.containerTag}`)
-      return []
+      return respond([])
     }
 
     const mdFiles = files.filter((f) => f.endsWith(".md"))
-    if (mdFiles.length === 0) return []
+    if (mdFiles.length === 0) return respond([])
 
     const queryTerms = tokenize(query)
 
     const scored: Array<{
+      id: string
       sessionId: string
       content: string
       score: number
       matchCount: number
+      documentDate?: string
     }> = []
 
     for (const file of mdFiles) {
       const content = await readFile(join(memoriesDir, file), "utf-8")
       const { score, matchCount } = scoreDocument(queryTerms, content)
+      const safeId = file.replace(".md", "")
+      let sessionId = safeId
+      let documentDate: string | undefined
+      try {
+        const metadata = JSON.parse(
+          await readFile(join(memoriesDir, `${safeId}.json`), "utf-8")
+        ) as { sessionId?: unknown; documentDate?: unknown }
+        if (typeof metadata.sessionId === "string" && metadata.sessionId) {
+          sessionId = metadata.sessionId
+        }
+        documentDate = resolveDocumentDate(metadata)
+      } catch {
+        const sessionMatch = content.match(/^# Memory: (.+)$/m)
+        const dateMatch = content.match(/^\*\*Date:\*\* (.+)$/m)
+        if (sessionMatch?.[1]) sessionId = sessionMatch[1]
+        const legacyDate = dateMatch?.[1]?.trim()
+        if (
+          legacyDate &&
+          !["unknown", "unknown date", "not specified"].includes(legacyDate.toLowerCase())
+        ) {
+          documentDate = legacyDate
+        }
+      }
       scored.push({
-        sessionId: file.replace(".md", ""),
+        id: safeId,
+        sessionId,
         content,
         score,
         matchCount,
+        ...(documentDate ? { documentDate } : {}),
       })
     }
 
     // Sort by score (desc), then by matchCount (desc) as tiebreaker
     scored.sort((a, b) => b.score - a.score || b.matchCount - a.matchCount)
 
-    const limit = options.limit || 10
-
     // Return top results; include score=0 results only if we have fewer than limit scored results
     const scoredResults = scored.filter((r) => r.score > 0)
     if (scoredResults.length >= limit) {
-      return scoredResults.slice(0, limit)
+      return respond(scoredResults.slice(0, limit))
     }
 
     // Fill remaining slots with unscored results (chronological order fallback)
     const unscoredResults = scored.filter((r) => r.score === 0)
-    return [...scoredResults, ...unscoredResults].slice(0, limit)
+    return respond([...scoredResults, ...unscoredResults].slice(0, limit))
   }
 
   async clear(containerTag: string): Promise<void> {

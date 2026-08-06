@@ -5,9 +5,10 @@ import type { ConcurrencyConfig } from "../../types/concurrency"
 import { PHASE_ORDER, getPhasesFromPhase } from "../../types/checkpoint"
 import { orchestrator, CheckpointManager } from "../../orchestrator"
 import { getAvailableProviders } from "../../providers"
-import { getAvailableBenchmarks } from "../../benchmarks"
+import { createBenchmark, getAvailableBenchmarks } from "../../benchmarks"
 import { listAvailableModels, DEFAULT_ANSWERING_MODEL } from "../../utils/models"
 import { logger } from "../../utils/logger"
+import { BEAM_MEM0_NUGGET_PROFILE } from "../../protocols/beam-mem0"
 
 const DEFAULT_JUDGE_MODEL = "gpt-4o"
 
@@ -23,6 +24,12 @@ interface RunArgs {
   force?: boolean
   fromPhase?: PhaseId
   concurrency?: ConcurrencyConfig
+  dataPath?: string
+  datasetRevision?: string
+  retrievalTopK?: number
+  answerCutoff?: number
+  evaluationProfile?: string
+  sourceRunId?: string
 }
 
 function generateRunId(): string {
@@ -80,6 +87,24 @@ export function parseRunArgs(args: string[]): RunArgs | null {
       concurrency.answer = parseInt(args[++i], 10)
     } else if (arg === "--concurrency-evaluate") {
       concurrency.evaluate = parseInt(args[++i], 10)
+    } else if (arg === "--data-path") {
+      parsed.dataPath = args[++i]
+    } else if (arg === "--dataset-revision") {
+      parsed.datasetRevision = args[++i]
+    } else if (arg === "--top-k" || arg === "--retrieval-top-k") {
+      parsed.retrievalTopK = parseInt(args[++i], 10)
+    } else if (arg === "--answer-cutoff") {
+      parsed.answerCutoff = parseInt(args[++i], 10)
+    } else if (arg === "--evaluation-profile") {
+      parsed.evaluationProfile = args[++i]
+      if (parsed.evaluationProfile !== BEAM_MEM0_NUGGET_PROFILE) {
+        logger.error(
+          `Invalid evaluation profile: ${parsed.evaluationProfile}. Valid profile: ${BEAM_MEM0_NUGGET_PROFILE}`
+        )
+        return null
+      }
+    } else if (arg === "--source-run") {
+      parsed.sourceRunId = args[++i]
     } else if (arg === "--force") {
       parsed.force = true
     }
@@ -110,6 +135,9 @@ export async function runCommand(args: string[]): Promise<void> {
     )
     console.log("  Continue run:   bun run src/index.ts run -r <runId> [-j <judge>] [-m <model>]")
     console.log("  From phase:     bun run src/index.ts run -r <runId> -f <phase>")
+    console.log(
+      "  Reuse builds:   bun run src/index.ts run --source-run <runId> -r <newRunId> -f search ..."
+    )
     console.log("")
     console.log("Options:")
     console.log(`  -p, --provider         Memory provider: ${getAvailableProviders().join(", ")}`)
@@ -130,6 +158,14 @@ export async function runCommand(args: string[]): Promise<void> {
     console.log("  --concurrency-answer N    Concurrency for answer phase")
     console.log("  --concurrency-evaluate N  Concurrency for evaluate phase")
     console.log("  --force                Clear existing checkpoint and start fresh")
+    console.log("  --data-path PATH       Prepared benchmark snapshot root or directory")
+    console.log("  --dataset-revision ID  Expected prepared dataset fingerprint")
+    console.log("  --retrieval-top-k K    Paper: 5/10/15/20; mem0-nugget direct ablation: 1-100")
+    console.log("  --top-k N              Alias for --retrieval-top-k")
+    console.log("  --answer-cutoff N      Evidence cutoff for the mem0-nugget profile")
+    console.log("  --evaluation-profile P Experimental BEAM profile: mem0-nugget")
+    console.log("  --source-run ID        Reuse validated completed builds; requires a new run ID")
+    console.log("  BEAM paper judge:      gpt-4.1-mini (selected by default for BEAM)")
     console.log("")
     console.log(`Available models: ${listAvailableModels().join(", ")}`)
     return
@@ -137,8 +173,42 @@ export async function runCommand(args: string[]): Promise<void> {
 
   const checkpointManager = new CheckpointManager()
 
-  // Check if run exists
-  if (checkpointManager.exists(parsed.runId)) {
+  const targetExists = checkpointManager.exists(parsed.runId)
+  if (parsed.sourceRunId) {
+    if (parsed.sourceRunId === parsed.runId) {
+      logger.error("Source and target run IDs must be different")
+      return
+    }
+    if (targetExists) {
+      logger.error(`Target run ${parsed.runId} already exists`)
+      return
+    }
+    if (parsed.force) {
+      logger.error("--source-run cannot be combined with --force")
+      return
+    }
+    if (parsed.fromPhase !== "search") {
+      logger.error("--source-run requires --from-phase search")
+      return
+    }
+    const source = checkpointManager.load(parsed.sourceRunId)
+    if (!source) {
+      logger.error(`Source run not found: ${parsed.sourceRunId}`)
+      return
+    }
+    if (parsed.provider && parsed.provider !== source.provider) {
+      logger.error(`Source run uses provider ${source.provider}, not ${parsed.provider}`)
+      return
+    }
+    if (parsed.benchmark && parsed.benchmark !== source.benchmark) {
+      logger.error(`Source run uses benchmark ${source.benchmark}, not ${parsed.benchmark}`)
+      return
+    }
+    parsed.provider = source.provider
+    parsed.benchmark = source.benchmark
+    parsed.dataPath = parsed.dataPath || source.dataPath
+    parsed.datasetRevision = parsed.datasetRevision || source.datasetRevision
+  } else if (targetExists) {
     const checkpoint = checkpointManager.load(parsed.runId)!
 
     // If provider/benchmark provided, validate they match
@@ -160,6 +230,11 @@ export async function runCommand(args: string[]): Promise<void> {
     parsed.benchmark = checkpoint.benchmark
     parsed.judgeModel = parsed.judgeModel || checkpoint.judge
     parsed.answeringModel = parsed.answeringModel || checkpoint.answeringModel
+    parsed.dataPath = parsed.dataPath || checkpoint.dataPath
+    parsed.datasetRevision = parsed.datasetRevision || checkpoint.datasetRevision
+    parsed.retrievalTopK = parsed.retrievalTopK ?? checkpoint.retrievalTopK
+    parsed.answerCutoff = parsed.answerCutoff ?? checkpoint.answerCutoff
+    parsed.evaluationProfile = parsed.evaluationProfile ?? checkpoint.evaluationProfile
 
     logger.info(`Continuing run ${parsed.runId} (${checkpoint.provider}/${checkpoint.benchmark})`)
   } else {
@@ -178,9 +253,30 @@ export async function runCommand(args: string[]): Promise<void> {
       console.error(`Invalid benchmark: ${parsed.benchmark}`)
       return
     }
+  }
 
-    // Apply defaults for new run
-    parsed.judgeModel = parsed.judgeModel || DEFAULT_JUDGE_MODEL
+  if (
+    parsed.evaluationProfile &&
+    parsed.benchmark !== "beam-1m" &&
+    parsed.benchmark !== "beam-10m" &&
+    parsed.benchmark !== "beam-1m-10m"
+  ) {
+    logger.error("--evaluation-profile mem0-nugget is only valid for BEAM benchmarks")
+    return
+  }
+  if (parsed.answerCutoff !== undefined && !parsed.evaluationProfile) {
+    logger.error("--answer-cutoff requires --evaluation-profile mem0-nugget")
+    return
+  }
+  if (!parsed.judgeModel) {
+    parsed.judgeModel =
+      parsed.evaluationProfile === BEAM_MEM0_NUGGET_PROFILE
+        ? "gpt-5"
+        : createBenchmark(parsed.benchmark as BenchmarkName).protocol.requiredJudge?.modelAlias ||
+          DEFAULT_JUDGE_MODEL
+  }
+  if (!parsed.answeringModel && parsed.evaluationProfile === BEAM_MEM0_NUGGET_PROFILE) {
+    parsed.answeringModel = "gpt-5"
   }
 
   const phases = parsed.fromPhase ? getPhasesFromPhase(parsed.fromPhase) : undefined
@@ -209,5 +305,11 @@ export async function runCommand(args: string[]): Promise<void> {
     concurrency: parsed.concurrency,
     force: parsed.force,
     phases,
+    dataPath: parsed.dataPath,
+    datasetRevision: parsed.datasetRevision,
+    retrievalTopK: parsed.retrievalTopK,
+    answerCutoff: parsed.answerCutoff,
+    evaluationProfile: parsed.evaluationProfile,
+    sourceRunId: parsed.sourceRunId,
   })
 }

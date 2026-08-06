@@ -30,6 +30,17 @@ export function initDatabase() {
             provider TEXT NOT NULL,
             benchmark TEXT NOT NULL,
             version TEXT NOT NULL DEFAULT 'baseline',
+            benchmark_scope TEXT,
+            dataset_identity TEXT,
+            dataset_fingerprint TEXT,
+            question_set_fingerprint TEXT,
+            protocol_identity TEXT,
+            protocol_fingerprint TEXT,
+            retrieval_top_k INTEGER,
+            primary_metric_key TEXT,
+            primary_metric_value REAL,
+            primary_metric_higher_is_better INTEGER,
+            comparison_cohort_key TEXT,
             accuracy REAL NOT NULL,
             total_questions INTEGER NOT NULL,
             correct_count INTEGER NOT NULL,
@@ -45,9 +56,37 @@ export function initDatabase() {
         )
     `)
 
+  const columns = new Set(
+    (
+      sqlite.query("PRAGMA table_info(leaderboard_entries)").all() as Array<{
+        name: string
+      }>
+    ).map((column) => column.name)
+  )
+  const identityColumns: Array<[string, string]> = [
+    ["benchmark_scope", "TEXT"],
+    ["dataset_identity", "TEXT"],
+    ["dataset_fingerprint", "TEXT"],
+    ["question_set_fingerprint", "TEXT"],
+    ["protocol_identity", "TEXT"],
+    ["protocol_fingerprint", "TEXT"],
+    ["retrieval_top_k", "INTEGER"],
+    ["primary_metric_key", "TEXT"],
+    ["primary_metric_value", "REAL"],
+    ["primary_metric_higher_is_better", "INTEGER"],
+    ["comparison_cohort_key", "TEXT"],
+  ]
+  for (const [name, type] of identityColumns) {
+    if (!columns.has(name)) {
+      sqlite.exec(`ALTER TABLE leaderboard_entries ADD COLUMN ${name} ${type}`)
+    }
+  }
+
+  // The old index collapsed different datasets/protocols/retrieval policies.
+  sqlite.exec("DROP INDEX IF EXISTS provider_benchmark_version_idx")
   sqlite.exec(`
-        CREATE UNIQUE INDEX IF NOT EXISTS provider_benchmark_version_idx
-        ON leaderboard_entries (provider, benchmark, version)
+        CREATE UNIQUE INDEX IF NOT EXISTS provider_benchmark_version_cohort_idx
+        ON leaderboard_entries (provider, benchmark, version, comparison_cohort_key)
     `)
 }
 

@@ -1,6 +1,7 @@
 import { createGoogleGenerativeAI } from "@ai-sdk/google"
 import { generateText } from "ai"
 import type { Judge, JudgeConfig, JudgeInput, JudgeResult } from "../types/judge"
+import type { ModelTransport } from "../types/protocol"
 import type { ProviderPrompts } from "../types/prompts"
 import { buildJudgePrompt, parseJudgeResponse, getJudgePrompt } from "./base"
 import { logger } from "../utils/logger"
@@ -46,8 +47,11 @@ export class GoogleJudge implements Judge {
     return getJudgePrompt(questionType, providerPrompts)
   }
 
-  getModel() {
+  getModel(transport: ModelTransport = "provider-default") {
     if (!this.client || !this.modelConfig) throw new Error("Judge not initialized")
+    if (transport !== "provider-default") {
+      throw new Error(`Google judge does not support model transport ${transport}`)
+    }
     return this.client(this.modelConfig.id)
   }
 }

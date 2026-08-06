@@ -1,30 +1,17 @@
 import type { ProviderPrompts } from "../../types/prompts"
-
-interface ZepResult {
-  _type?: string
-  fact?: string
-  name?: string
-  summary?: string
-  valid_at?: string
-  invalid_at?: string
-}
+import type { UnifiedSearchResult } from "../../types/unified"
 
 function buildZepContext(context: unknown[]): string {
   const facts: string[] = []
   const entities: string[] = []
 
   for (const r of context) {
-    const result = r as ZepResult
-    const type = result._type
+    const result = r as UnifiedSearchResult
 
-    if (type === "node") {
-      const name = result.name || "Unknown"
-      const summary = result.summary || ""
-      entities.push(`  - ${name}: ${summary}`)
+    if (result.resultType === "graph-node") {
+      entities.push(`  - ${result.text}`)
     } else {
-      const content = result.fact || JSON.stringify(r)
-      const validAt = result.valid_at
-      facts.push(`  - ${content} (event_time: ${validAt || "unknown"})`)
+      facts.push(`  - ${result.text}`)
     }
   }
 

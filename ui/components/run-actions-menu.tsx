@@ -3,12 +3,13 @@
 import { useState, useRef, useEffect } from "react"
 import { createPortal } from "react-dom"
 import Link from "next/link"
-import { cn } from "@/lib/utils"
+import { cn, getBenchmarkDisplayName } from "@/lib/utils"
 
 interface RunActionsMenuProps {
   runId: string
   provider: string
   benchmark: string
+  benchmarkScope?: Record<string, unknown>
   status: string
   onAddToLeaderboard: (data: { version?: string; notes?: string }) => Promise<void>
   onDelete: () => void
@@ -20,6 +21,7 @@ export function RunActionsMenu({
   runId,
   provider,
   benchmark,
+  benchmarkScope,
   status,
   onAddToLeaderboard,
   onDelete,
@@ -205,6 +207,7 @@ export function RunActionsMenu({
             position={popoverPosition}
             provider={provider}
             benchmark={benchmark}
+            benchmarkScope={benchmarkScope}
             onSubmit={async (data) => {
               await onAddToLeaderboard(data)
               setShowLeaderboardPopover(false)
@@ -224,12 +227,13 @@ interface LeaderboardPopoverProps {
   position: { top: number; left: number }
   provider: string
   benchmark: string
+  benchmarkScope?: Record<string, unknown>
   onSubmit: (data: { version?: string; notes?: string }) => Promise<void>
   onClose: () => void
 }
 
 const LeaderboardPopover = forwardRef<HTMLDivElement, LeaderboardPopoverProps>(
-  ({ position, provider, benchmark, onSubmit, onClose }, ref) => {
+  ({ position, provider, benchmark, benchmarkScope, onSubmit, onClose }, ref) => {
     const [editingVersion, setEditingVersion] = useState(false)
     const [version, setVersion] = useState("")
     const [notes, setNotes] = useState("")
@@ -291,7 +295,7 @@ const LeaderboardPopover = forwardRef<HTMLDivElement, LeaderboardPopoverProps>(
           <div className="text-xs text-text-muted">
             <span className="lowercase">{provider}</span>
             <span className="mx-1">/</span>
-            <span className="lowercase">{benchmark}</span>
+            <span>{getBenchmarkDisplayName(benchmark, benchmarkScope)}</span>
           </div>
 
           {/* Version */}

@@ -1,14 +1,8 @@
 import type { ProviderPrompts } from "../../types/prompts"
-
-interface FilesystemResult {
-  sessionId: string
-  content: string
-  score: number
-  matchCount: number
-}
+import type { UnifiedSearchResult } from "../../types/unified"
 
 function buildFilesystemContext(context: unknown[]): string {
-  const results = context as FilesystemResult[]
+  const results = context as UnifiedSearchResult[]
 
   if (results.length === 0) {
     return "No relevant memory files were found."
@@ -16,8 +10,8 @@ function buildFilesystemContext(context: unknown[]): string {
 
   return results
     .map((result, i) => {
-      const header = `=== Memory File ${i + 1}: ${result.sessionId} (relevance: ${(result.score * 100).toFixed(0)}%) ===`
-      return `${header}\n${result.content}`
+      const date = result.documentDate ? ` [${result.documentDate}]` : ""
+      return `=== Memory File ${i + 1}${date} ===\n${result.text}`
     })
     .join("\n\n---\n\n")
 }

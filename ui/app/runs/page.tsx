@@ -4,7 +4,13 @@ import { useState, useEffect, useMemo, useRef, useCallback } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { getRuns, deleteRun, stopRun, startRun, addToLeaderboard, type RunSummary } from "@/lib/api"
-import { formatDate, getStatusColor, cn } from "@/lib/utils"
+import {
+  formatDate,
+  getBenchmarkDisplayName,
+  getPipelineProgress,
+  getStatusColor,
+  cn,
+} from "@/lib/utils"
 import { FilterBar } from "@/components/filter-bar"
 import { DataTable, type Column } from "@/components/data-table"
 import { RunActionsMenu } from "@/components/run-actions-menu"
@@ -113,6 +119,9 @@ export default function RunsPage() {
         runId: run.runId,
         judgeModel: run.judge,
         answeringModel: run.answeringModel,
+        dataPath: run.dataPath,
+        datasetRevision: run.datasetRevision,
+        retrievalTopK: run.retrievalTopK,
       })
       await refreshRuns()
     } catch (e) {
@@ -140,7 +149,10 @@ export default function RunsPage() {
     })
     return Object.entries(counts).map(([value, count]) => ({
       value,
-      label: value,
+      label: getBenchmarkDisplayName(
+        value,
+        runs.find((run) => run.benchmark === value)?.benchmarkScope
+      ),
       count,
     }))
   }, [runs])
@@ -212,7 +224,7 @@ export default function RunsPage() {
       {
         key: "benchmark",
         header: "Benchmark",
-        render: (run) => <span className="capitalize">{run.benchmark}</span>,
+        render: (run) => <span>{getBenchmarkDisplayName(run.benchmark, run.benchmarkScope)}</span>,
       },
       {
         key: "status",
@@ -224,16 +236,7 @@ export default function RunsPage() {
             run.status === "initializing" ||
             run.status === "stopping"
           const s = run.summary
-          const phasesCompleted = s.ingested + s.indexed + s.searched + s.answered + s.evaluated
-          const totalPhases = 5 * s.total
-          const progress = totalPhases > 0 ? phasesCompleted / totalPhases : 0
-
-          let phasesFullyComplete = 0
-          if (s.ingested === s.total) phasesFullyComplete++
-          if (s.indexed === s.total) phasesFullyComplete++
-          if (s.searched === s.total) phasesFullyComplete++
-          if (s.answered === s.total) phasesFullyComplete++
-          if (s.evaluated === s.total) phasesFullyComplete++
+          const { progress, phasesFullyComplete } = getPipelineProgress(s)
 
           return (
             <div className="flex items-center gap-2">
@@ -248,7 +251,7 @@ export default function RunsPage() {
       },
       {
         key: "accuracy",
-        header: "Accuracy",
+        header: "Pass Accuracy",
         align: "right",
         render: (run) => {
           const accuracyPct =
@@ -279,6 +282,7 @@ export default function RunsPage() {
             runId={run.runId}
             provider={run.provider}
             benchmark={run.benchmark}
+            benchmarkScope={run.benchmarkScope}
             status={run.status}
             onAddToLeaderboard={(data) => handleAddToLeaderboard(run.runId, data)}
             onDelete={() => handleDelete(run.runId)}

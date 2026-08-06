@@ -1,8 +1,9 @@
 "use client"
 
 import { useState, useMemo } from "react"
-import { cn } from "@/lib/utils"
+import { cn, isEvaluationFailed, isEvaluationPassed } from "@/lib/utils"
 import { MultiSelect } from "@/components/multi-select"
+import type { BuildReport, QuestionMetric, RunCostReport } from "@/lib/api"
 
 function Tooltip({ text, children }: { text: string; children: React.ReactNode }) {
   const [show, setShow] = useState(false)
@@ -62,6 +63,240 @@ export function StatsGrid({ cards }: StatsGridProps) {
   )
 }
 
+export function BuildMetricsTable({ builds }: { builds?: BuildReport | null }) {
+  if (!builds) return null
+
+  return (
+    <div className="card">
+      <h3 className="text-sm font-medium text-text-primary mb-1">Build Metrics</h3>
+      <p className="text-xs text-text-muted mb-4">
+        One-time cost per container; never multiplied by question count.
+      </p>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+        <StatCard label="containers" value={builds.uniqueBuildCount} />
+        <StatCard label="build work" value={`${builds.sumContainerBuildWorkMs}ms`} />
+        <StatCard label="phase wall-clock" value={`${builds.buildPhaseWallClockMs}ms`} />
+        <StatCard
+          label="known build cost"
+          value={builds.totalBuildCostUsd == null ? "—" : `$${builds.totalBuildCostUsd.toFixed(4)}`}
+          subtext={`${builds.knownCostBuildCount}/${builds.totalCostBuildCount} costs known`}
+        />
+      </div>
+      {builds.items.length > 0 && (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-border">
+                <th className="text-left py-2 px-3 text-text-muted font-medium uppercase text-xs">
+                  container
+                </th>
+                <th className="text-right py-2 px-3 text-text-muted font-medium uppercase text-xs">
+                  ingest
+                </th>
+                <th className="text-right py-2 px-3 text-text-muted font-medium uppercase text-xs">
+                  index
+                </th>
+                <th className="text-right py-2 px-3 text-text-muted font-medium uppercase text-xs">
+                  wall-clock
+                </th>
+                <th className="text-right py-2 px-3 text-text-muted font-medium uppercase text-xs">
+                  work
+                </th>
+                <th className="text-right py-2 px-3 text-text-muted font-medium uppercase text-xs">
+                  cost
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {builds.items.map((build) => (
+                <tr key={build.buildId} className="border-b border-border/50">
+                  <td className="py-2 px-3 text-text-primary font-mono text-xs">
+                    {build.containerTag}
+                    {build.reused && <span className="ml-2 text-text-muted">reused</span>}
+                    {!build.reused && build.reusedPhases?.ingest && (
+                      <span className="ml-2 text-text-muted">ingest reused</span>
+                    )}
+                  </td>
+                  <td className="py-2 px-3 text-right font-mono text-text-secondary">
+                    {build.ingestLatencyMs}ms
+                  </td>
+                  <td className="py-2 px-3 text-right font-mono text-text-secondary">
+                    {build.indexingLatencyMs}ms
+                  </td>
+                  <td className="py-2 px-3 text-right font-mono text-text-secondary">
+                    {build.buildWallClockMs}ms
+                  </td>
+                  <td className="py-2 px-3 text-right font-mono text-text-secondary">
+                    {build.buildWorkMs}ms
+                  </td>
+                  <td className="py-2 px-3 text-right font-mono text-text-secondary">
+                    {build.costUsd == null ? "—" : `$${build.costUsd.toFixed(4)}`}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  )
+}
+
+export function QuestionMetricsSummary({
+  metrics,
+  costs,
+}: {
+  metrics?: QuestionMetric[] | null
+  costs?: RunCostReport | null
+}) {
+  if (!metrics?.length) return null
+  const mean = (values: number[]) => values.reduce((sum, value) => sum + value, 0) / values.length
+  const amortized = metrics
+    .map((metric) => metric.amortizedOnlinePlusBuildWorkMs)
+    .filter((value): value is number => value != null)
+  const allocationDenominators = Array.from(
+    new Set(
+      metrics
+        .map((metric) => metric.buildAllocationQuestionCount)
+        .filter((value): value is number => value != null)
+    )
+  ).sort((left, right) => left - right)
+  const summarizeCosts = (values: Array<number | null>): RunCostReport["query"] => {
+    const known = values.filter((value): value is number => value != null)
+    return {
+      totalCostUsd:
+        values.length > 0 && known.length === values.length
+          ? known.reduce((sum, value) => sum + value, 0)
+          : null,
+      knownCostCount: known.length,
+      totalCostCount: values.length,
+    }
+  }
+  const effectiveCosts =
+    costs ??
+    ({
+      query: summarizeCosts(metrics.map((metric) => metric.queryCostUsd)),
+      evaluation: summarizeCosts(metrics.map((metric) => metric.evaluationCostUsd)),
+    } satisfies RunCostReport)
+  const evaluationUsage = metrics
+    .map((metric) => metric.evaluationUsage)
+    .filter((usage): usage is NonNullable<typeof usage> => usage != null)
+  const sumEvaluationUsage = (field: keyof (typeof evaluationUsage)[number]) =>
+    evaluationUsage.reduce((sum, usage) => sum + (usage[field] ?? 0), 0)
+  const evaluationRequestCount = sumEvaluationUsage("requestCount")
+  const completeTokenUsageCount = sumEvaluationUsage("tokenUsageCompleteRequestCount")
+  const partialTokenUsageCount = sumEvaluationUsage("tokenUsagePartialRequestCount")
+  const unknownTokenUsageCount = sumEvaluationUsage("tokenUsageUnknownRequestCount")
+  const classifiedTokenUsageCount =
+    completeTokenUsageCount + partialTokenUsageCount + unknownTokenUsageCount
+  const formatCost = (value: number | null) => (value == null ? "—" : `$${value.toFixed(4)}`)
+  const amortizationSubtext =
+    allocationDenominators.length === 0
+      ? "online + allocated build work; denominator unavailable"
+      : allocationDenominators.length === 1
+        ? `online + build work ÷ ${allocationDenominators[0]} completed question${allocationDenominators[0] === 1 ? "" : "s"} for its build`
+        : `online + build work ÷ per-build completed-question counts (${allocationDenominators.join(", ")})`
+  const recordedRetrievalMetrics = metrics.filter((metric) =>
+    [
+      metric.configuredTopK,
+      metric.rawReturnedCount,
+      metric.normalizedCount,
+      metric.answerEvidenceCount,
+    ].some((value) => value != null)
+  )
+  const onlyNumbers = (values: Array<number | undefined>) =>
+    values.filter((value): value is number => value != null)
+  const uniqueTopK = Array.from(
+    new Set(onlyNumbers(recordedRetrievalMetrics.map((metric) => metric.configuredTopK)))
+  ).sort((a, b) => a - b)
+  const uniqueProviderLimits = Array.from(
+    new Set(onlyNumbers(recordedRetrievalMetrics.map((metric) => metric.providerRequestLimit)))
+  ).sort((a, b) => a - b)
+  const formatContractValue = (values: number[]) =>
+    values.length === 0
+      ? "—"
+      : values.length === 1
+        ? String(values[0])
+        : `mixed (${values.join(", ")})`
+  const formatMean = (values: Array<number | undefined>) => {
+    const recorded = onlyNumbers(values)
+    return recorded.length > 0 ? mean(recorded).toFixed(1) : "—"
+  }
+  const totalDropped = recordedRetrievalMetrics.reduce(
+    (sum, metric) => sum + (metric.droppedCount ?? 0),
+    0
+  )
+
+  return (
+    <div className="card">
+      <h3 className="text-sm font-medium text-text-primary mb-1">Per-question Metrics</h3>
+      <p className="text-xs text-text-muted mb-4">
+        Online query and offline evaluation are reported separately from build work.
+      </p>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <StatCard
+          label="online query mean"
+          value={`${mean(metrics.map((metric) => metric.onlineQueryLatencyMs)).toFixed(1)}ms`}
+        />
+        <StatCard
+          label="evaluation mean"
+          value={`${mean(metrics.map((metric) => metric.evaluationLatencyMs)).toFixed(1)}ms`}
+        />
+        <StatCard
+          label="amortized mean"
+          value={amortized.length > 0 ? `${mean(amortized).toFixed(1)}ms` : "—"}
+          subtext={amortizationSubtext}
+        />
+        <StatCard
+          label="query / eval total cost"
+          value={`${formatCost(effectiveCosts.query.totalCostUsd)} / ${formatCost(effectiveCosts.evaluation.totalCostUsd)}`}
+          subtext={`${effectiveCosts.query.knownCostCount}/${effectiveCosts.query.totalCostCount} query, ${effectiveCosts.evaluation.knownCostCount}/${effectiveCosts.evaluation.totalCostCount} eval known`}
+        />
+        {evaluationRequestCount > 0 && (
+          <StatCard
+            label="evaluation requests"
+            value={evaluationRequestCount}
+            subtext={
+              classifiedTokenUsageCount > 0
+                ? `${completeTokenUsageCount} complete, ${partialTokenUsageCount} partial, ${unknownTokenUsageCount} unknown token usage`
+                : "token-usage coverage unavailable for this report"
+            }
+          />
+        )}
+      </div>
+      {recordedRetrievalMetrics.length > 0 && (
+        <>
+          <h4 className="text-xs text-text-muted uppercase tracking-wide mt-5 mb-3">
+            Retrieval contract
+          </h4>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <StatCard
+              label="configured top-k"
+              value={formatContractValue(uniqueTopK)}
+              subtext={`provider request limit ${formatContractValue(uniqueProviderLimits)}`}
+            />
+            <StatCard
+              label="raw / normalized mean"
+              value={`${formatMean(recordedRetrievalMetrics.map((metric) => metric.rawReturnedCount))} / ${formatMean(recordedRetrievalMetrics.map((metric) => metric.normalizedCount))}`}
+              subtext={`${totalDropped} result${totalDropped === 1 ? "" : "s"} dropped during normalization`}
+            />
+            <StatCard
+              label="evidence / cutoff mean"
+              value={`${formatMean(recordedRetrievalMetrics.map((metric) => metric.answerEvidenceCount))} / ${formatMean(recordedRetrievalMetrics.map((metric) => metric.answerCutoff))}`}
+              subtext="results actually placed in the answer prompt"
+            />
+            <StatCard
+              label="context tokens mean"
+              value={formatMean(recordedRetrievalMetrics.map((metric) => metric.contextTokens))}
+              subtext="retrieved-context prompt tokens"
+            />
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
 export interface QuestionTypeStats {
   accuracy: number
   correct: number
@@ -70,30 +305,45 @@ export interface QuestionTypeStats {
 
 export interface AccuracyByTypeProps {
   byQuestionType: Record<string, QuestionTypeStats>
+  qualityBySlice?: Record<string, Record<string, number>>
 }
 
-export function AccuracyByType({ byQuestionType }: AccuracyByTypeProps) {
-  if (!byQuestionType || Object.keys(byQuestionType).length === 0) {
-    return null
-  }
+export function AccuracyByType({ byQuestionType, qualityBySlice }: AccuracyByTypeProps) {
+  const types = Array.from(
+    new Set([
+      ...Object.keys(byQuestionType || {}),
+      ...Object.keys(qualityBySlice || {}).filter((type) => !type.startsWith("tier:")),
+    ])
+  ).sort()
+  if (types.length === 0) return null
 
   return (
     <div className="card">
-      <h3 className="text-sm font-medium text-text-primary mb-4">Accuracy by Question Type</h3>
+      <h3 className="text-sm font-medium text-text-primary mb-4">Quality by Question Type</h3>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        {Object.entries(byQuestionType).map(([type, stats]) => (
-          <div key={type} className="bg-bg-primary p-3 rounded border border-border">
-            <div className="text-xs text-text-muted uppercase tracking-wide mb-1">
-              {type.replace(/[-_]/g, " ")}
+        {types.map((type) => {
+          const stats = byQuestionType?.[type]
+          const averageScore = qualityBySlice?.[type]?.averageScore
+          const passAccuracy = qualityBySlice?.[type]?.passAccuracy ?? stats?.accuracy
+          const displayValue = averageScore ?? stats?.accuracy
+          return (
+            <div key={type} className="bg-bg-primary p-3 rounded border border-border">
+              <div className="text-xs text-text-muted uppercase tracking-wide mb-1">
+                {type.replace(/[-_]/g, " ")}
+              </div>
+              <div className="text-xl font-mono text-text-primary">
+                {displayValue != null ? `${(displayValue * 100).toFixed(0)}%` : "—"}
+              </div>
+              <div className="text-xs text-text-secondary">
+                {averageScore != null
+                  ? `avg score${passAccuracy != null ? ` · ${(passAccuracy * 100).toFixed(0)}% pass` : ""}`
+                  : stats
+                    ? `${stats.correct}/${stats.total}`
+                    : "average score unavailable"}
+              </div>
             </div>
-            <div className="text-xl font-mono text-text-primary">
-              {(stats.accuracy * 100).toFixed(0)}%
-            </div>
-            <div className="text-xs text-text-secondary">
-              {stats.correct}/{stats.total}
-            </div>
-          </div>
-        ))}
+          )
+        })}
       </div>
     </div>
   )
@@ -142,6 +392,9 @@ export function LatencyTable({ latency }: LatencyTableProps) {
               <th className="text-left py-2 px-3 text-text-muted font-medium uppercase text-xs">
                 phase
               </th>
+              <th className="text-left py-2 px-3 text-text-muted font-medium uppercase text-xs">
+                scope
+              </th>
               <th className="text-right py-2 px-3 text-text-muted font-medium uppercase text-xs">
                 min
               </th>
@@ -167,9 +420,17 @@ export function LatencyTable({ latency }: LatencyTableProps) {
               (phase) => {
                 const stats = latency[phase]
                 if (!stats) return null
+                const scope =
+                  phase === "ingest" || phase === "indexing"
+                    ? "build / container"
+                    : phase === "evaluate"
+                      ? "offline / question"
+                      : "online / question"
+                const phaseLabel = phase === "total" ? "online total" : phase
                 return (
                   <tr key={phase} className="border-b border-border/50">
-                    <td className="py-2 px-3 text-text-primary capitalize">{phase}</td>
+                    <td className="py-2 px-3 text-text-primary capitalize">{phaseLabel}</td>
+                    <td className="py-2 px-3 text-text-muted text-xs">{scope}</td>
                     <td className="py-2 px-3 text-right font-mono text-text-secondary">
                       {stats.min}
                     </td>
@@ -324,8 +585,20 @@ export interface EvaluationResult {
   groundTruth: string
   hypothesis?: string
   score?: number
+  primaryScore?: number
+  passed?: boolean
   label?: string
   explanation?: string
+  metrics?: Record<string, number>
+  details?: Record<string, unknown>
+  evaluation?: {
+    primaryScore?: number
+    passed?: boolean
+    label?: string
+    explanation?: string
+    metrics?: Record<string, number>
+    details?: Record<string, unknown>
+  }
 }
 
 export interface EvaluationListProps {
@@ -353,12 +626,12 @@ export function EvaluationList({ evaluations, onViewDetails }: EvaluationListPro
   }, [evaluations])
 
   const failureCount = useMemo(() => {
-    return evaluations.filter((e) => e.label === "incorrect" || e.score === 0).length
+    return evaluations.filter((e) => isEvaluationFailed(e)).length
   }, [evaluations])
 
   const filtered = useMemo(() => {
     return evaluations.filter((e) => {
-      if (showFailuresOnly && e.label !== "incorrect" && e.score !== 0) {
+      if (showFailuresOnly && !isEvaluationFailed(e)) {
         return false
       }
 
@@ -478,8 +751,13 @@ export function EvaluationList({ evaluations, onViewDetails }: EvaluationListPro
         <div className="border border-border rounded overflow-hidden">
           {filtered.map((evaluation, idx) => {
             const isExpanded = expandedId === evaluation.questionId
-            const isCorrect = evaluation.score === 1 || evaluation.label === "correct"
+            const isCorrect = isEvaluationPassed(evaluation)
             const isLast = idx === filtered.length - 1
+            const primaryScore =
+              evaluation.evaluation?.primaryScore ?? evaluation.primaryScore ?? evaluation.score
+            const metrics = evaluation.evaluation?.metrics ?? evaluation.metrics
+            const details = evaluation.evaluation?.details ?? evaluation.details
+            const explanation = evaluation.evaluation?.explanation ?? evaluation.explanation
 
             return (
               <div
@@ -518,8 +796,14 @@ export function EvaluationList({ evaluations, onViewDetails }: EvaluationListPro
                       isCorrect ? "text-status-success" : "text-status-error"
                     )}
                   >
-                    {evaluation.label}
+                    {evaluation.label || (isCorrect ? "correct" : "incorrect")}
                   </span>
+
+                  {primaryScore != null && (
+                    <span className="text-xs font-mono text-text-secondary flex-shrink-0">
+                      {primaryScore.toFixed(3)}
+                    </span>
+                  )}
 
                   {onViewDetails && (
                     <button
@@ -584,14 +868,43 @@ export function EvaluationList({ evaluations, onViewDetails }: EvaluationListPro
                       </div>
                     </div>
 
-                    {evaluation.explanation && (
+                    {metrics && Object.keys(metrics).length > 0 && (
+                      <div className="min-w-0">
+                        <div className="text-xs text-text-muted uppercase tracking-wide mb-1">
+                          Protocol metrics
+                        </div>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                          {Object.entries(metrics).map(([metric, value]) => (
+                            <div key={metric} className="bg-bg-elevated p-2 rounded">
+                              <div className="text-[10px] text-text-muted uppercase break-words">
+                                {metric}
+                              </div>
+                              <div className="text-sm font-mono text-text-primary">
+                                {Number.isFinite(value) ? value.toFixed(4) : String(value)}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {explanation && (
                       <div className="min-w-0">
                         <div className="text-xs text-text-muted uppercase tracking-wide mb-1">
                           Explanation
                         </div>
-                        <div className="text-sm text-text-secondary break-words">
-                          {evaluation.explanation}
+                        <div className="text-sm text-text-secondary break-words">{explanation}</div>
+                      </div>
+                    )}
+
+                    {details && Object.keys(details).length > 0 && (
+                      <div className="min-w-0">
+                        <div className="text-xs text-text-muted uppercase tracking-wide mb-1">
+                          Protocol details
                         </div>
+                        <pre className="text-xs text-text-secondary font-mono bg-bg-elevated p-3 rounded overflow-x-auto max-h-[320px] overflow-y-auto">
+                          {JSON.stringify(details, null, 2)}
+                        </pre>
                       </div>
                     )}
                   </div>

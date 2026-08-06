@@ -1,76 +1,22 @@
-import type { Judge } from "../../types/judge"
 import type { Benchmark } from "../../types/benchmark"
-import type { RunCheckpoint } from "../../types/checkpoint"
+import type { AnswerPhaseCheckpoint, RunCheckpoint } from "../../types/checkpoint"
+import type { Judge } from "../../types/judge"
 import type { Provider } from "../../types/provider"
-import { generateText } from "ai"
-import { CheckpointManager } from "../checkpoint"
-import { logger } from "../../utils/logger"
-import { ConcurrentExecutor } from "../concurrent"
 import { resolveConcurrency } from "../../types/concurrency"
-import { calculateRetrievalMetrics } from "./retrieval-eval"
-import { buildBeamRubricJudgePrompt, parseBeamRubricJudgeResponse } from "../../prompts/beam"
+import { logger } from "../../utils/logger"
+import { CheckpointManager } from "../checkpoint"
+import { ConcurrentExecutor } from "../concurrent"
+import { JudgeEvaluationRuntime } from "../evaluation-runtime"
+import { calculateProtocolRetrievalMetrics } from "./retrieval-eval"
 
-interface BeamRubricItemResult {
-  rubricItem: string
-  score: number
-  reason: string
-}
-
-function getBeamRubric(question: { metadata?: Record<string, unknown> }): string[] | null {
-  const rubric = question.metadata?.rubric
-  if (!Array.isArray(rubric) || rubric.some((item) => typeof item !== "string")) {
-    return null
+export function hasEvaluableAnswer(answer: AnswerPhaseCheckpoint | undefined): boolean {
+  if (!answer || answer.status !== "completed" || typeof answer.hypothesis !== "string") {
+    return false
   }
-
-  return rubric
-}
-
-async function evaluateBeamRubricQuestion(
-  judge: Judge,
-  question: { question: string; metadata?: Record<string, unknown> },
-  hypothesis: string
-): Promise<{ score: number; label: "correct" | "incorrect"; explanation: string; details: Record<string, unknown> }> {
-  const rubric = getBeamRubric(question)
-  if (!rubric) {
-    return {
-      score: 0,
-      label: "incorrect",
-      explanation: "Missing BEAM rubric metadata",
-      details: {},
-    }
-  }
-
-  const model = judge.getModel()
-  const results: BeamRubricItemResult[] = []
-
-  for (const rubricItem of rubric) {
-    const prompt = buildBeamRubricJudgePrompt(question.question, rubricItem, hypothesis)
-    const { text } = await generateText({
-      model,
-      prompt,
-      maxOutputTokens: 512,
-      temperature: 0,
-    })
-    const parsed = parseBeamRubricJudgeResponse(text)
-    results.push({
-      rubricItem,
-      score: parsed.score,
-      reason: parsed.reason,
-    })
-  }
-
-  const averageScore =
-    results.length > 0 ? results.reduce((sum, item) => sum + item.score, 0) / results.length : 0
-
-  return {
-    score: averageScore,
-    label: averageScore >= 1 ? "correct" : "incorrect",
-    explanation: `BEAM rubric average score: ${averageScore.toFixed(2)}`,
-    details: {
-      rubricResults: results,
-      rubricAverageScore: averageScore,
-    },
-  }
+  return (
+    answer.hypothesis.trim().length > 0 ||
+    (answer.hypothesis === "" && answer.terminalEmptyAccepted === true)
+  )
 }
 
 export async function runEvaluatePhase(
@@ -83,14 +29,11 @@ export async function runEvaluatePhase(
 ): Promise<void> {
   const questions = benchmark.getQuestions()
   const targetQuestions = questionIds
-    ? questions.filter((q) => questionIds.includes(q.questionId))
+    ? questions.filter((question) => questionIds.includes(question.questionId))
     : questions
-
-  const pendingQuestions = targetQuestions.filter((q) => {
-    const status = checkpointManager.getPhaseStatus(checkpoint, q.questionId, "evaluate")
-    const answerStatus = checkpointManager.getPhaseStatus(checkpoint, q.questionId, "answer")
-    const hypothesis = checkpoint.questions[q.questionId]?.phases.answer.hypothesis
-    return status !== "completed" && answerStatus === "completed" && hypothesis
+  const pendingQuestions = targetQuestions.filter((question) => {
+    const phases = checkpoint.questions[question.questionId]?.phases
+    return phases?.evaluate.status !== "completed" && hasEvaluableAnswer(phases?.answer)
   })
 
   if (pendingQuestions.length === 0) {
@@ -99,7 +42,6 @@ export async function runEvaluatePhase(
   }
 
   const concurrency = resolveConcurrency("evaluate", checkpoint.concurrency, provider?.concurrency)
-
   logger.info(
     `Evaluating ${pendingQuestions.length} questions with ${judge.name} (concurrency: ${concurrency})...`
   )
@@ -110,46 +52,78 @@ export async function runEvaluatePhase(
     checkpoint.runId,
     "evaluate",
     async ({ item: question, index, total }) => {
-      const hypothesis = checkpoint.questions[question.questionId].phases.answer.hypothesis!
-
-      const startTime = Date.now()
+      const questionCheckpoint = checkpoint.questions[question.questionId]
+      const hypothesis = questionCheckpoint.phases.answer.hypothesis
+      if (typeof hypothesis !== "string") {
+        throw new Error(`Missing completed hypothesis for ${question.questionId}`)
+      }
+      const search = questionCheckpoint.phases.search
+      if (!search.retrievalPlan)
+        throw new Error(`Missing retrieval plan for ${question.questionId}`)
+      const results = search.results || []
+      const startedAt = new Date().toISOString()
+      const startedMs = Date.now()
       checkpointManager.updatePhase(checkpoint, question.questionId, "evaluate", {
         status: "in_progress",
-        startedAt: new Date().toISOString(),
+        startedAt,
+        costUsd: null,
+        error: undefined,
       })
+      await checkpointManager.flush(checkpoint.runId)
+      const runtime = new JudgeEvaluationRuntime(judge)
 
       try {
-        const searchResults = checkpoint.questions[question.questionId].phases.search.results || []
-        const rubric = getBeamRubric(question)
+        const evaluation = await benchmark.protocol.evaluateQuestion(
+          {
+            question,
+            hypothesis,
+            results,
+            retrieval: search.retrievalPlan,
+            providerPrompts: provider?.prompts,
+            protocolProgress: questionCheckpoint.phases.evaluate.protocolProgress,
+            onProtocolProgress: async (protocolProgress) => {
+              checkpointManager.updatePhase(checkpoint, question.questionId, "evaluate", {
+                protocolProgress,
+              })
+              await checkpointManager.flush(checkpoint.runId)
+            },
+          },
+          runtime
+        )
+        const retrievalMetrics = await calculateProtocolRetrievalMetrics(
+          benchmark.protocol.auxiliaryRetrievalEvaluation,
+          runtime,
+          question.question,
+          question.groundTruth,
+          results,
+          search.retrievalPlan.answerCutoff
+        )
+        if (
+          !Number.isFinite(evaluation.primaryScore) ||
+          evaluation.primaryScore < 0 ||
+          evaluation.primaryScore > 1
+        ) {
+          throw new Error(`Protocol returned invalid primary score ${evaluation.primaryScore}`)
+        }
 
-        const [result, retrievalMetrics] = await Promise.all([
-          rubric
-            ? evaluateBeamRubricQuestion(judge, question, hypothesis)
-            : judge.evaluate({
-                question: question.question,
-                questionType: question.questionType,
-                groundTruth: question.groundTruth,
-                hypothesis,
-                providerPrompts: provider?.prompts,
-              }),
-          calculateRetrievalMetrics(
-            judge.getModel(),
-            question.question,
-            question.groundTruth,
-            searchResults
-          ),
-        ])
-
-        const durationMs = Date.now() - startTime
+        const completedAt = new Date().toISOString()
+        const durationMs = Date.now() - startedMs
+        const passed = evaluation.passed
         checkpointManager.updatePhase(checkpoint, question.questionId, "evaluate", {
           status: "completed",
-          score: result.score,
-          label: result.label,
-          explanation: result.explanation,
-          details: result.details,
-          retrievalMetrics,
-          completedAt: new Date().toISOString(),
+          evaluation,
+          score: evaluation.primaryScore,
+          label: passed ? "correct" : "incorrect",
+          explanation: evaluation.explanation,
+          details: {
+            ...(evaluation.details || {}),
+            ...(evaluation.metrics ? { protocolMetrics: evaluation.metrics } : {}),
+          },
+          ...(retrievalMetrics ? { retrievalMetrics } : {}),
+          ...(runtime.getUsage?.() ? { usage: runtime.getUsage!() } : {}),
+          completedAt,
           durationMs,
+          error: undefined,
         })
 
         const retrievalInfo = retrievalMetrics
@@ -158,19 +132,18 @@ export async function runEvaluatePhase(
         logger.progress(
           index + 1,
           total,
-          `Evaluated ${question.questionId}: ${result.label}${retrievalInfo} (${durationMs}ms)`
+          `Evaluated ${question.questionId}: ${passed ? "pass" : "fail"} (${evaluation.primaryScore.toFixed(3)})${retrievalInfo} (${durationMs}ms)`
         )
-
-        return { questionId: question.questionId, durationMs, label: result.label }
-      } catch (e) {
-        const error = e instanceof Error ? e.message : String(e)
+        return { questionId: question.questionId, durationMs, passed }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
         checkpointManager.updatePhase(checkpoint, question.questionId, "evaluate", {
           status: "failed",
-          error,
+          ...(runtime.getUsage?.() ? { usage: runtime.getUsage!() } : {}),
+          error: message,
         })
-        logger.error(`Failed to evaluate ${question.questionId}: ${error}`)
         throw new Error(
-          `Evaluate failed at ${question.questionId}: ${error}. Fix the issue and resume with the same run ID.`
+          `Evaluate failed at ${question.questionId}: ${message}. Fix the issue and resume with the same run ID.`
         )
       }
     }

@@ -22,6 +22,7 @@ export interface Chunk {
 }
 
 export interface SearchResult {
+  id: string
   content: string
   score: number
   vectorScore: number
@@ -278,16 +279,58 @@ export class HybridSearchEngine {
     return this.containers.get(containerTag)!
   }
 
-  addChunks(containerTag: string, chunks: Chunk[]): void {
-    const container = this.getContainer(containerTag)
+  private replaceContainer(containerTag: string, chunks: Iterable<Chunk>): void {
+    const container = {
+      chunks: new Map<string, Chunk>(),
+      bm25Index: createBM25Index(),
+    }
 
     for (const chunk of chunks) {
       container.chunks.set(chunk.id, chunk)
+    }
+    for (const chunk of container.chunks.values()) {
       addToBM25Index(container.bm25Index, chunk.id, chunk.content)
     }
+
+    this.containers.set(containerTag, container)
   }
 
-  search(containerTag: string, queryEmbedding: number[], query: string, limit: number): SearchResult[] {
+  addChunks(containerTag: string, chunks: Chunk[]): void {
+    const container = this.getContainer(containerTag)
+    const merged = new Map(container.chunks)
+    for (const chunk of chunks) {
+      merged.set(chunk.id, chunk)
+    }
+    // Rebuild the lexical index so retrying a deterministic chunk ID is an
+    // idempotent replacement rather than a second BM25 document.
+    this.replaceContainer(containerTag, merged.values())
+  }
+
+  /**
+   * Atomically replace all chunks owned by the supplied sessions. A retry may
+   * produce fewer chunks than the first attempt, so merging IDs alone would
+   * leave stale evidence from the abandoned attempt.
+   */
+  replaceSessionChunks(containerTag: string, sessionIds: string[], chunks: Chunk[]): void {
+    const replaced = new Set(sessionIds)
+    const retained = this.getChunks(containerTag).filter((chunk) => !replaced.has(chunk.sessionId))
+    this.replaceContainer(containerTag, [...retained, ...chunks])
+  }
+
+  replaceChunks(containerTag: string, chunks: Chunk[]): void {
+    this.replaceContainer(containerTag, chunks)
+  }
+
+  getChunks(containerTag: string): Chunk[] {
+    return [...(this.containers.get(containerTag)?.chunks.values() ?? [])]
+  }
+
+  search(
+    containerTag: string,
+    queryEmbedding: number[],
+    query: string,
+    limit: number
+  ): SearchResult[] {
     const container = this.containers.get(containerTag)
     if (!container || container.chunks.size === 0) return []
 
@@ -340,6 +383,7 @@ export class HybridSearchEngine {
     return hybridScores.slice(0, limit).map((result) => {
       const chunk = container.chunks.get(result.chunkId)!
       return {
+        id: chunk.id,
         content: chunk.content,
         score: result.score,
         vectorScore: result.vectorScore,

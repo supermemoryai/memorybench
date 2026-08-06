@@ -9,6 +9,7 @@ import type {
 } from "../../types/unified"
 import type { LongMemEvalItem } from "./types"
 import { logger } from "../../utils/logger"
+import { legacyBenchmarkProtocol } from "../../protocols/legacy"
 
 const DEFAULT_DATA_PATH = "./data/benchmarks/longmemeval/datasets"
 const HF_DATASET_URL =
@@ -81,6 +82,8 @@ export const LONGMEMEVAL_QUESTION_TYPES: QuestionTypeRegistry = {
 
 export class LongMemEvalBenchmark implements Benchmark {
   name = "longmemeval"
+  scope = { displayName: "LongMemEval", includedTiers: [], coverage: "full" as const }
+  protocol = legacyBenchmarkProtocol
   private data: LongMemEvalItem[] = []
   private questions: UnifiedQuestion[] = []
   private sessionsMap: Map<string, UnifiedSession[]> = new Map()

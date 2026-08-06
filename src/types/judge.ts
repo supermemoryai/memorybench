@@ -1,4 +1,5 @@
 import type { ProviderPrompts } from "./prompts"
+import type { ModelTransport } from "./protocol"
 
 export interface JudgeConfig {
   apiKey: string
@@ -28,7 +29,7 @@ export interface Judge {
   initialize(config: JudgeConfig): Promise<void>
   evaluate(input: JudgeInput): Promise<JudgeResult>
   getPromptForQuestionType(questionType: string, providerPrompts?: ProviderPrompts): string
-  getModel(): import("ai").LanguageModel
+  getModel(transport?: ModelTransport): import("ai").LanguageModel
 }
 
 export type JudgeName = "openai" | "anthropic" | "google"

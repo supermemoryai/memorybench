@@ -7,6 +7,7 @@ import { FilterBar } from "@/components/filter-bar"
 import { DataTable, type Column } from "@/components/data-table"
 import { DropdownMenu } from "@/components/dropdown-menu"
 import { EmptyState, TrophyIcon } from "@/components/empty-state"
+import { getBenchmarkDisplayName } from "@/lib/utils"
 
 export default function LeaderboardPage() {
   const [entries, setEntries] = useState<LeaderboardEntry[]>([])
@@ -66,7 +67,10 @@ export default function LeaderboardPage() {
     })
     return Object.entries(counts).map(([value, count]) => ({
       value,
-      label: value,
+      label: getBenchmarkDisplayName(
+        value,
+        entries.find((entry) => entry.benchmark === value)?.benchmarkScope
+      ),
       count,
     }))
   }, [entries])
@@ -97,6 +101,9 @@ export default function LeaderboardPage() {
       return true
     })
   }, [entries, search, selectedProviders, selectedBenchmarks])
+
+  // The API orders and ranks exact comparison cohorts. Filtering preserves that order.
+  const rankedEntries = filteredEntries
 
   // Get question types and registry - only when exactly one benchmark is selected
   const { visibleQuestionTypes, typeRegistry } = useMemo((): {
@@ -129,9 +136,16 @@ export default function LeaderboardPage() {
     const cols: Column<LeaderboardEntry>[] = [
       {
         key: "rank",
-        header: "Rank",
-        width: "60px",
-        render: (_, idx) => <span className="font-mono text-text-muted">{idx + 1}</span>,
+        header: "Cohort Rank",
+        width: "90px",
+        render: (entry) => (
+          <span
+            className="font-mono text-text-muted"
+            title={`Rank within comparison cohort ${entry.cohortKey}`}
+          >
+            {entry.cohortRank}/{entry.cohortSize}
+          </span>
+        ),
       },
       {
         key: "provider",
@@ -141,7 +155,9 @@ export default function LeaderboardPage() {
       {
         key: "benchmark",
         header: "Benchmark",
-        render: (entry) => <span className="capitalize">{entry.benchmark}</span>,
+        render: (entry) => (
+          <span>{getBenchmarkDisplayName(entry.benchmark, entry.benchmarkScope)}</span>
+        ),
       },
       {
         key: "version",
@@ -167,6 +183,36 @@ export default function LeaderboardPage() {
           )
         },
       },
+      {
+        key: "configuration",
+        header: "Cohort",
+        render: (entry) => (
+          <div className="font-mono text-xs">
+            <div>{entry.cohortKey.slice(0, 8)}</div>
+            <div className="text-[10px] text-text-muted">
+              top-k {entry.retrievalTopK ?? "legacy"}
+            </div>
+          </div>
+        ),
+      },
+      {
+        key: "primaryMetric",
+        header: "Primary",
+        align: "right",
+        render: (entry) => {
+          const primary = entry.primaryMetric ?? entry.quality?.primaryMetric
+          const value = primary?.value ?? entry.accuracy
+          const key = primary?.key ?? "accuracy"
+          return (
+            <div className="text-right">
+              <div className="font-mono font-medium text-accent">{(value * 100).toFixed(1)}%</div>
+              <div className="text-[10px] text-text-muted">
+                {key.replace(/([a-z])([A-Z])/g, "$1 $2")}
+              </div>
+            </div>
+          )
+        },
+      },
     ]
 
     // Add question type columns only when single benchmark is selected
@@ -181,15 +227,25 @@ export default function LeaderboardPage() {
           if (!stats) {
             return <span className="text-text-muted">—</span>
           }
-          return <span className="font-mono">{(stats.accuracy * 100).toFixed(0)}%</span>
+          const value = stats.averageScore ?? stats.accuracy
+          return (
+            <div className="text-center">
+              <div className="font-mono">{(value * 100).toFixed(0)}%</div>
+              {stats.averageScore != null && (
+                <div className="text-[10px] text-text-muted">
+                  {((stats.passAccuracy ?? stats.accuracy) * 100).toFixed(0)}% pass
+                </div>
+              )}
+            </div>
+          )
         },
       })
     })
 
-    // Accuracy column (always last)
+    // Pass accuracy is separate from the protocol's continuous primary score.
     cols.push({
       key: "accuracy",
-      header: "Accuracy",
+      header: "Pass Accuracy",
       align: "right",
       render: (entry) => (
         <span className="font-mono font-medium text-accent">
@@ -252,6 +308,10 @@ export default function LeaderboardPage() {
       {/* Header */}
       <div className="mb-6">
         <h1 className="text-2xl font-display font-semibold text-text-primary">Leaderboard</h1>
+        <p className="text-sm text-text-muted mt-1">
+          Ranks compare only identical dataset, question set, scope, protocol, retrieval Top-K, and
+          primary metric cohorts.
+        </p>
       </div>
 
       {/* Filter Bar */}
@@ -299,7 +359,7 @@ export default function LeaderboardPage() {
       ) : (
         <DataTable
           columns={columns}
-          data={filteredEntries}
+          data={rankedEntries}
           emptyMessage="No entries match your filters"
           getRowKey={(entry) => entry.id}
         />

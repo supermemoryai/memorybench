@@ -3,9 +3,8 @@ import type { BenchmarkName } from "../../types/benchmark"
 import type { SamplingConfig, SampleType } from "../../types/checkpoint"
 import { batchManager } from "../../orchestrator/batch"
 import { getAvailableProviders } from "../../providers"
-import { getAvailableBenchmarks } from "../../benchmarks"
+import { createBenchmark, getAvailableBenchmarks } from "../../benchmarks"
 import { DEFAULT_ANSWERING_MODEL } from "../../utils/models"
-import { logger } from "../../utils/logger"
 
 const DEFAULT_JUDGE_MODEL = "gpt-4o"
 
@@ -19,13 +18,13 @@ interface CompareArgs {
   sampleType?: SampleType
   limit?: number
   force?: boolean
+  dataPath?: string
+  datasetRevision?: string
+  retrievalTopK?: number
 }
 
 export function parseCompareArgs(args: string[]): CompareArgs | null {
-  const parsed: Partial<CompareArgs> = {
-    judgeModel: DEFAULT_JUDGE_MODEL,
-    answeringModel: DEFAULT_ANSWERING_MODEL,
-  }
+  const parsed: Partial<CompareArgs> = { answeringModel: DEFAULT_ANSWERING_MODEL }
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i]
@@ -47,19 +46,31 @@ export function parseCompareArgs(args: string[]): CompareArgs | null {
       if (type === "consecutive" || type === "random") {
         parsed.sampleType = type
       } else {
-        logger.error(`Invalid sample type: ${type}. Valid types: consecutive, random`)
-        return null
+        throw new Error(`Invalid sample type: ${type}. Valid types: consecutive, random`)
       }
     } else if (arg === "-l" || arg === "--limit") {
       parsed.limit = parseInt(args[++i], 10)
     } else if (arg === "--force") {
       parsed.force = true
+    } else if (arg === "--data-path") {
+      parsed.dataPath = args[++i]
+    } else if (arg === "--dataset-revision") {
+      parsed.datasetRevision = args[++i]
+    } else if (arg === "--top-k" || arg === "--retrieval-top-k") {
+      parsed.retrievalTopK = parseInt(args[++i], 10)
     }
   }
 
   if (!parsed.compareId && (!parsed.providers || !parsed.benchmark)) {
     return null
   }
+
+  parsed.judgeModel =
+    parsed.judgeModel ||
+    (parsed.benchmark
+      ? createBenchmark(parsed.benchmark as BenchmarkName).protocol.requiredJudge?.modelAlias
+      : undefined) ||
+    DEFAULT_JUDGE_MODEL
 
   return parsed as CompareArgs
 }
@@ -86,11 +97,18 @@ export async function compareCommand(args: string[]): Promise<void> {
     console.log("  -l, --limit           Limit total number of questions")
     console.log("  --compare-id          Compare ID (for resuming)")
     console.log("  --force               Clear existing comparison and start fresh")
+    console.log("  --data-path PATH      Prepared dataset snapshot root")
+    console.log("  --dataset-revision ID Expected dataset fingerprint")
+    console.log("  --retrieval-top-k K   Retrieval cutoff (BEAM: 5, 10, 15, or 20)")
+    console.log("  --top-k N             Benchmark retrieval Top-K")
     console.log("")
     console.log("Examples:")
     console.log("  bun run src/index.ts compare -p supermemory,mem0,zep -b locomo -s 5")
     console.log("  bun run src/index.ts compare -p supermemory,filesystem,rag -b locomo -s 5")
     console.log("  bun run src/index.ts compare --compare-id compare-20251222-103045")
+    if (!args.includes("--help") && !args.includes("-h")) {
+      throw new Error("Invalid or incomplete compare arguments")
+    }
     return
   }
 
@@ -102,18 +120,16 @@ export async function compareCommand(args: string[]): Promise<void> {
     } else {
       for (const provider of parsed.providers!) {
         if (!getAvailableProviders().includes(provider as ProviderName)) {
-          logger.error(
+          throw new Error(
             `Invalid provider: ${provider}. Available: ${getAvailableProviders().join(", ")}`
           )
-          return
         }
       }
 
       if (!getAvailableBenchmarks().includes(parsed.benchmark as BenchmarkName)) {
-        logger.error(
+        throw new Error(
           `Invalid benchmark: ${parsed.benchmark}. Available: ${getAvailableBenchmarks().join(", ")}`
         )
-        return
       }
 
       let sampling: SamplingConfig | undefined
@@ -137,13 +153,19 @@ export async function compareCommand(args: string[]): Promise<void> {
         answeringModel: parsed.answeringModel,
         sampling,
         force: parsed.force,
+        dataPath: parsed.dataPath,
+        datasetRevision: parsed.datasetRevision,
+        retrievalTopK: parsed.retrievalTopK,
       })
     }
 
     if (result.successes > 0) {
       batchManager.printComparisonReport(result.manifest)
     }
+    if (result.failures > 0) {
+      throw new Error(`${result.failures} provider comparison run(s) failed`)
+    }
   } catch (error) {
-    logger.error(`${error}`)
+    throw error
   }
 }

@@ -1,7 +1,7 @@
 import { existsSync, readdirSync } from "fs"
 import { join } from "path"
 import { CheckpointManager } from "../../orchestrator/checkpoint"
-import { batchManager } from "../../orchestrator/batch"
+import { batchManager, comparePrimaryMetrics } from "../../orchestrator/batch"
 import type { CompareManifest } from "../../orchestrator/batch"
 import { wsManager } from "../index"
 import { getRunState } from "../runState"
@@ -22,6 +22,24 @@ export type CompareState = {
 }
 
 const activeCompares = new Map<string, CompareState>()
+
+function getEvaluationPassState(value: any): boolean | undefined {
+  const protocolEvaluation = value?.evaluation
+  if (typeof protocolEvaluation?.passed === "boolean") return protocolEvaluation.passed
+  if (typeof value?.passed === "boolean") return value.passed
+
+  for (const label of [protocolEvaluation?.label, value?.label]) {
+    if (typeof label !== "string") continue
+    const normalized = label.toLowerCase()
+    if (normalized === "pass" || normalized === "correct") return true
+    if (normalized === "fail" || normalized === "incorrect" || normalized === "wrong") {
+      return false
+    }
+  }
+
+  const legacyScore = value?.score ?? protocolEvaluation?.primaryScore
+  return typeof legacyScore === "number" ? legacyScore === 1 : undefined
+}
 
 function json(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
@@ -126,6 +144,10 @@ export async function handleCompareRoutes(req: Request, url: URL): Promise<Respo
         return {
           compareId,
           benchmark: manifest.benchmark,
+          benchmarkScope: manifest.benchmarkScope,
+          datasetIdentity: manifest.datasetIdentity,
+          benchmarkInputFingerprint: manifest.benchmarkInputFingerprint,
+          selectedQuestionIdsDigest: manifest.selectedQuestionIdsDigest,
           judge: manifest.judge,
           answeringModel: manifest.answeringModel,
           createdAt: manifest.createdAt,
@@ -146,7 +168,17 @@ export async function handleCompareRoutes(req: Request, url: URL): Promise<Respo
   if (method === "POST" && pathname === "/api/compare/start") {
     try {
       const body = await req.json()
-      const { providers, benchmark, judgeModel, answeringModel, sampling, force } = body
+      const {
+        providers,
+        benchmark,
+        judgeModel,
+        answeringModel,
+        sampling,
+        force,
+        dataPath,
+        datasetRevision,
+        retrievalTopK,
+      } = body
 
       if (!providers || !Array.isArray(providers) || providers.length === 0) {
         return json({ error: "Missing or invalid providers array" }, 400)
@@ -166,6 +198,9 @@ export async function handleCompareRoutes(req: Request, url: URL): Promise<Respo
         answeringModel,
         sampling,
         force,
+        dataPath,
+        datasetRevision,
+        retrievalTopK,
       })
 
       return json({ message: "Comparison started", compareId })
@@ -204,7 +239,7 @@ export async function handleCompareRoutes(req: Request, url: URL): Promise<Respo
         (q: any) => q.phases?.evaluate?.status === "completed"
       )
       const correctCount = evaluatedQuestions.filter(
-        (q: any) => q.phases?.evaluate?.score === 1
+        (q: any) => getEvaluationPassState(q.phases?.evaluate) === true
       ).length
       const accuracy =
         evaluatedQuestions.length > 0 ? correctCount / evaluatedQuestions.length : null
@@ -254,10 +289,21 @@ export async function handleCompareRoutes(req: Request, url: URL): Promise<Respo
       return json({ error: "Comparison not found" }, 404)
     }
 
-    const reports = batchManager.getReports(manifest)
+    let reports
+    try {
+      reports = batchManager.getReports(manifest)
+    } catch (error) {
+      return json(
+        {
+          error: error instanceof Error ? error.message : "Comparison reports failed validation",
+        },
+        409
+      )
+    }
     if (reports.length === 0) {
       return json({ error: "No reports available yet" }, 404)
     }
+    const comparison = comparePrimaryMetrics(reports, manifest.runs.length)
 
     // Return aggregated data
     return json({
@@ -265,6 +311,14 @@ export async function handleCompareRoutes(req: Request, url: URL): Promise<Respo
       benchmark: manifest.benchmark,
       judge: manifest.judge,
       answeringModel: manifest.answeringModel,
+      comparison: {
+        comparable: comparison.comparable,
+        identity: comparison.identity,
+        identities: comparison.identities,
+        mismatchReasons: comparison.mismatchReasons,
+        bestValue: comparison.bestValue,
+        winners: comparison.winners,
+      },
       reports: reports.map((r) => ({
         provider: r.provider,
         report: r.report,
@@ -345,20 +399,31 @@ function getRunStatus(checkpoint: any, summary: any): string {
     return "failed"
   }
 
-  // Check if any question has a failed phase
   const questions = Object.values(checkpoint.questions || {}) as any[]
-  const hasFailed = questions.some((q: any) => {
+  const builds = Object.values(checkpoint.builds || {}) as any[]
+  const usesSharedBuilds = builds.length > 0 || questions.some((question) => question.buildId)
+
+  // Build phases are owned once per shared haystack, not by each question.
+  const hasFailedBuild = builds.some(
+    (build) => build.ingest?.status === "failed" || build.indexing?.status === "failed"
+  )
+
+  // Search, answer, and evaluation remain question-owned.
+  const hasMissingReferencedBuild = questions.some(
+    (question) => question.buildId && !checkpoint.builds?.[question.buildId]
+  )
+  const hasFailedQuestion = questions.some((q: any) => {
     const phases = q.phases || {}
     return (
-      phases.ingest?.status === "failed" ||
-      phases.indexing?.status === "failed" ||
+      (!usesSharedBuilds &&
+        (phases.ingest?.status === "failed" || phases.indexing?.status === "failed")) ||
       phases.search?.status === "failed" ||
       phases.answer?.status === "failed" ||
       phases.evaluate?.status === "failed"
     )
   })
 
-  if (hasFailed) {
+  if (hasFailedBuild || hasMissingReferencedBuild || hasFailedQuestion) {
     return "failed"
   }
 
@@ -388,10 +453,21 @@ async function initializeComparison(options: {
   answeringModel: string
   sampling?: SamplingConfig
   force?: boolean
+  dataPath?: string
+  datasetRevision?: string
+  retrievalTopK?: number
 }): Promise<{ compareId: string }> {
-  // Only await manifest creation - this is fast
   const manifest = await batchManager.createManifest(options)
   const compareId = manifest.compareId
+
+  try {
+    // Every provider must pass the same durable dataset/protocol/build/resume
+    // preflight before this endpoint can return a successful start response.
+    await batchManager.preflightRuns(manifest)
+  } catch (error) {
+    batchManager.delete(compareId)
+    throw error
+  }
 
   startCompare(
     compareId,

@@ -16,8 +16,10 @@ import {
   type SampleType,
   type SamplingConfig,
   type Provider,
+  type Benchmark,
 } from "@/lib/api"
 import { SingleSelect } from "@/components/single-select"
+import { getBenchmarkDisplayName } from "@/lib/utils"
 
 type Tab = "new" | "advanced"
 
@@ -29,7 +31,7 @@ export default function NewRunPage() {
   const [error, setError] = useState<string | null>(null)
 
   const [providers, setProviders] = useState<Provider[]>([])
-  const [benchmarks, setBenchmarks] = useState<{ name: string; displayName: string }[]>([])
+  const [benchmarks, setBenchmarks] = useState<Benchmark[]>([])
   const [models, setModels] = useState<any>({})
   const [completedRuns, setCompletedRuns] = useState<RunSummary[]>([])
 
@@ -39,6 +41,9 @@ export default function NewRunPage() {
     runId: "",
     judgeModel: "gpt-4o",
     answeringModel: "gpt-4o",
+    dataPath: "",
+    datasetRevision: "",
+    retrievalTopK: "5",
     selectionMode: "full" as SelectionMode,
     sampleType: "consecutive" as SampleType,
     perCategory: "2",
@@ -156,6 +161,15 @@ export default function NewRunPage() {
   const canChangeAnsweringModel = ["indexing", "search", "answer"].includes(advancedForm.fromPhase)
 
   const selectedProvider = providers.find((p) => p.name === form.provider)
+  const selectedBenchmark = benchmarks.find((benchmark) => benchmark.name === form.benchmark)
+  const isBeam = form.benchmark.startsWith("beam-")
+
+  useEffect(() => {
+    const requiredJudge = selectedBenchmark?.requiredJudge?.modelAlias
+    if (requiredJudge && form.judgeModel !== requiredJudge) {
+      setForm((current) => ({ ...current, judgeModel: requiredJudge }))
+    }
+  }, [selectedBenchmark, form.judgeModel])
 
   useEffect(() => {
     if (selectedProvider) {
@@ -311,6 +325,24 @@ export default function NewRunPage() {
         force: activeTab === "new",
         fromPhase,
         sourceRunId,
+        dataPath:
+          activeTab === "advanced"
+            ? selectedSourceRun?.dataPath
+            : isBeam
+              ? form.dataPath || undefined
+              : undefined,
+        datasetRevision:
+          activeTab === "advanced"
+            ? selectedSourceRun?.datasetRevision
+            : isBeam
+              ? form.datasetRevision || undefined
+              : undefined,
+        retrievalTopK:
+          activeTab === "advanced"
+            ? selectedSourceRun?.retrievalTopK
+            : isBeam
+              ? Number(form.retrievalTopK)
+              : undefined,
       })
 
       router.push(`/runs/${encodeURIComponent(runId)}`)
@@ -325,11 +357,14 @@ export default function NewRunPage() {
   const providerOptions = providers.map((p) => ({ value: p.name, label: p.displayName }))
   const benchmarkOptions = benchmarks.map((b) => ({ value: b.name, label: b.displayName }))
   const modelOptions = allModels.map((m) => ({ value: m.alias, label: m.displayName || m.alias }))
+  const judgeModelOptions = selectedBenchmark?.requiredJudge
+    ? modelOptions.filter((model) => model.value === selectedBenchmark.requiredJudge!.modelAlias)
+    : modelOptions
 
   const runOptions = completedRuns.map((r) => ({
     value: r.runId,
     label: r.runId,
-    sublabel: `${r.provider} · ${r.benchmark}${r.summary.total ? ` · ${r.summary.total}q` : ""}${r.accuracy !== null ? ` · ${(r.accuracy * 100).toFixed(0)}%` : ""}`,
+    sublabel: `${r.provider} · ${getBenchmarkDisplayName(r.benchmark, r.benchmarkScope)}${r.summary.total ? ` · ${r.summary.total}q` : ""}${r.accuracy !== null ? ` · ${(r.accuracy * 100).toFixed(0)}%` : ""}`,
   }))
 
   if (loading) {
@@ -513,7 +548,12 @@ export default function NewRunPage() {
                     <div className="text-base">
                       <span className="text-text-muted">Benchmark:</span>{" "}
                       <span className="text-text-primary font-medium">
-                        {selectedSourceRun?.benchmark}
+                        {selectedSourceRun
+                          ? getBenchmarkDisplayName(
+                              selectedSourceRun.benchmark,
+                              selectedSourceRun.benchmarkScope
+                            )
+                          : undefined}
                       </span>
                     </div>
                     <div className="text-base flex items-center gap-1">
@@ -814,6 +854,49 @@ export default function NewRunPage() {
               )}
             </div>
 
+            {isBeam && (
+              <div className="grid grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-text-primary mb-2">
+                    Prepared data path
+                  </label>
+                  <input
+                    type="text"
+                    value={form.dataPath}
+                    onChange={(event) => setForm({ ...form, dataPath: event.target.value })}
+                    placeholder="Default: data/benchmarks/beam"
+                    className="w-full px-3 py-2.5 text-sm bg-[#222222] border border-[#333333] rounded text-text-primary placeholder-text-muted focus:outline-none focus:border-accent"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-text-primary mb-2">
+                    Snapshot fingerprint
+                  </label>
+                  <input
+                    type="text"
+                    value={form.datasetRevision}
+                    onChange={(event) => setForm({ ...form, datasetRevision: event.target.value })}
+                    placeholder="Optional pinned fingerprint"
+                    className="w-full px-3 py-2.5 text-sm bg-[#222222] border border-[#333333] rounded text-text-primary placeholder-text-muted focus:outline-none focus:border-accent font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-text-primary mb-2">
+                    Retrieval Top-K
+                  </label>
+                  <SingleSelect
+                    label="Top-K"
+                    options={[5, 10, 15, 20].map((value) => ({
+                      value: String(value),
+                      label: String(value),
+                    }))}
+                    selected={form.retrievalTopK}
+                    onChange={(value) => setForm({ ...form, retrievalTopK: value })}
+                  />
+                </div>
+              </div>
+            )}
+
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-text-primary mb-2">Provider</label>
@@ -846,7 +929,7 @@ export default function NewRunPage() {
                 </label>
                 <SingleSelect
                   label="Select model"
-                  options={modelOptions}
+                  options={judgeModelOptions}
                   selected={form.judgeModel}
                   onChange={(value) => setForm({ ...form, judgeModel: value })}
                   placeholder="Select model"

@@ -1,5 +1,6 @@
 import type { ProviderName } from "../../types/provider"
 import type { BenchmarkName } from "../../types/benchmark"
+import type { ConcurrencyConfig } from "../../types/concurrency"
 import { orchestrator, CheckpointManager } from "../../orchestrator"
 import { getAvailableProviders } from "../../providers"
 import { getAvailableBenchmarks } from "../../benchmarks"
@@ -10,6 +11,14 @@ interface IngestArgs {
   benchmark?: string
   runId: string
   force?: boolean
+  dataPath?: string
+  datasetRevision?: string
+  retrievalTopK?: number
+  judgeModel?: string
+  answeringModel?: string
+  concurrency?: ConcurrencyConfig
+  ingestBatchSize?: number
+  ingestReadinessTimeoutMs?: number
 }
 
 function generateRunId(): string {
@@ -21,6 +30,7 @@ function generateRunId(): string {
 
 export function parseIngestArgs(args: string[]): IngestArgs | null {
   const parsed: Partial<IngestArgs> = {}
+  const concurrency: Partial<ConcurrencyConfig> = {}
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i]
@@ -32,6 +42,30 @@ export function parseIngestArgs(args: string[]): IngestArgs | null {
       parsed.runId = args[++i]
     } else if (arg === "--force") {
       parsed.force = true
+    } else if (arg === "--data-path") {
+      parsed.dataPath = args[++i]
+    } else if (arg === "--dataset-revision") {
+      parsed.datasetRevision = args[++i]
+    } else if (arg === "--top-k" || arg === "--retrieval-top-k") {
+      parsed.retrievalTopK = parseInt(args[++i], 10)
+    } else if (arg === "--concurrency") {
+      concurrency.default = parseInt(args[++i], 10)
+    } else if (arg === "--concurrency-ingest") {
+      concurrency.ingest = parseInt(args[++i], 10)
+    } else if (arg === "--concurrency-indexing") {
+      concurrency.indexing = parseInt(args[++i], 10)
+    } else if (arg === "--ingest-batch-size") {
+      const value = Number(args[++i])
+      if (!Number.isInteger(value) || value < 1 || value > 600) {
+        throw new Error("--ingest-batch-size must be an integer between 1 and 600")
+      }
+      parsed.ingestBatchSize = value
+    } else if (arg === "--ingest-timeout-seconds") {
+      const value = Number(args[++i])
+      if (!Number.isInteger(value) || value < 1) {
+        throw new Error("--ingest-timeout-seconds must be a positive integer")
+      }
+      parsed.ingestReadinessTimeoutMs = value * 1000
     }
   }
 
@@ -42,6 +76,10 @@ export function parseIngestArgs(args: string[]): IngestArgs | null {
 
   if (!parsed.runId) {
     parsed.runId = generateRunId()
+  }
+
+  if (Object.keys(concurrency).length > 0) {
+    parsed.concurrency = concurrency as ConcurrencyConfig
   }
 
   return parsed as IngestArgs
@@ -62,6 +100,17 @@ export async function ingestCommand(args: string[]): Promise<void> {
     console.log(`  -b, --benchmark  Benchmark: ${getAvailableBenchmarks().join(", ")}`)
     console.log("  -r, --run-id     Run identifier")
     console.log("  --force          Clear existing checkpoint and start fresh")
+    console.log("  --data-path PATH       Prepared dataset snapshot root")
+    console.log("  --dataset-revision ID  Expected dataset fingerprint")
+    console.log("  --concurrency N         Concurrency for conversation builds")
+    console.log("  --concurrency-ingest N  Concurrency for document submission")
+    console.log("  --concurrency-indexing N  Concurrency for readiness polling")
+    console.log("  --ingest-batch-size N     Ordered sessions per provider batch (1-600)")
+    console.log("  --ingest-timeout-seconds N  Per-readiness-call timeout (default: 300)")
+    console.log(
+      "  --retrieval-top-k K    Retrieval configuration recorded in the run protocol identity"
+    )
+    console.log("  --top-k N              Benchmark retrieval Top-K")
     return
   }
 
@@ -85,6 +134,11 @@ export async function ingestCommand(args: string[]): Promise<void> {
 
     parsed.provider = checkpoint.provider
     parsed.benchmark = checkpoint.benchmark
+    parsed.dataPath = parsed.dataPath || checkpoint.dataPath
+    parsed.datasetRevision = parsed.datasetRevision || checkpoint.datasetRevision
+    parsed.retrievalTopK = parsed.retrievalTopK ?? checkpoint.retrievalTopK
+    parsed.judgeModel = checkpoint.judge
+    parsed.answeringModel = checkpoint.answeringModel
     logger.info(
       `Continuing ingest for ${parsed.runId} (${checkpoint.provider}/${checkpoint.benchmark})`
     )
@@ -110,5 +164,13 @@ export async function ingestCommand(args: string[]): Promise<void> {
     benchmark: parsed.benchmark as BenchmarkName,
     runId: parsed.runId,
     force: parsed.force,
+    dataPath: parsed.dataPath,
+    datasetRevision: parsed.datasetRevision,
+    retrievalTopK: parsed.retrievalTopK,
+    judgeModel: parsed.judgeModel,
+    answeringModel: parsed.answeringModel,
+    concurrency: parsed.concurrency,
+    ingestBatchSize: parsed.ingestBatchSize,
+    ingestReadinessTimeoutMs: parsed.ingestReadinessTimeoutMs,
   })
 }

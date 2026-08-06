@@ -94,5 +94,8 @@ export async function testQuestionCommand(args: string[]): Promise<void> {
     runId: parsed.runId,
     questionId: parsed.questionId,
     answeringModel: parsed.answeringModel,
+    dataPath: checkpoint.dataPath,
+    datasetRevision: checkpoint.datasetRevision,
+    retrievalTopK: checkpoint.retrievalTopK,
   })
 }

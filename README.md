@@ -68,19 +68,28 @@ GOOGLE_API_KEY=
 | `list-questions` | Browse benchmark questions |
 | `show-failures` | Debug failed questions |
 | `serve` | Start web UI |
+| `beam prepare` | Download, verify, and convert pinned public BEAM data |
 | `help` | Show help (`help providers`, `help models`, `help benchmarks`) |
 
 ## Options
 
 ```
 -p, --provider         Memory provider (supermemory, mem0, zep)
--b, --benchmark        Benchmark (locomo, longmemeval, convomem, beam-1m, beam-10m)
+-b, --benchmark        Benchmark (locomo, longmemeval, convomem, beam-1m, beam-10m, beam-1m-10m)
 -j, --judge            Judge model (gpt-4o, sonnet-4, gemini-2.5-flash, etc.)
 -r, --run-id           Run identifier (auto-generated if omitted)
 -m, --answering-model  Model for answer generation (default: gpt-4o)
 -l, --limit            Limit number of questions
 -q, --question-id      Specific question (for test command)
 --force                Clear checkpoint and restart
+--data-path            Prepared BEAM snapshot root or snapshot path
+--dataset-revision     Pin the prepared BEAM dataset fingerprint
+--retrieval-top-k      BEAM paper cutoff (5, 10, 15, or 20; default: 5)
+--answer-cutoff        Evidence shown to the answerer in the experimental mem0-nugget profile
+--evaluation-profile   Experimental BEAM evaluation profile (`mem0-nugget`)
+--source-run           Reuse validated completed ingest/index builds in a new run
+--concurrency          Default phase/build concurrency (supported by `run` and `ingest`)
+--ingest-batch-size    Ordered sessions per provider request before its readiness barrier
 ```
 
 ## Examples
@@ -104,6 +113,15 @@ bun run src/index.ts run -p zep -b longmemeval -j sonnet-4 -m gemini-2.5-flash
 # Compare multiple providers
 bun run src/index.ts compare -p supermemory,mem0,zep -b locomo -s 5
 
+# Prepare and run the supported BEAM 1M tier
+bun run src/index.ts beam prepare --tiers 1M
+# Copy the dataset fingerprint printed by `beam prepare` into this command.
+bun run src/index.ts run -p supermemory -b beam-1m -j gpt-4.1-mini --retrieval-top-k 5 --data-path ./data/benchmarks/beam --dataset-revision DATASET_FINGERPRINT_PRINTED_ABOVE
+
+# Experimental direct-K50 mem0-style scoring run reusing the completed 1M build.
+# This does not alter or claim parity with the BEAM paper protocol.
+bun run src/index.ts run -p supermemory -b beam-1m --source-run beam-1m-ingest-c35-b5 -r beam-1m-sm-gpt5-direct-k50-mem0-nugget-v3 --from-phase search --evaluation-profile mem0-nugget --retrieval-top-k 50 --answer-cutoff 50 -m gpt-5 -j gpt-5 --concurrency-search 10 --concurrency-answer 10 --concurrency-evaluate 10
+
 # Test single question
 bun run src/index.ts test -r my-test -q question_42
 
@@ -123,7 +141,35 @@ bun run src/index.ts show-failures -r my-test
 6. REPORT    Aggregate scores → Output accuracy + latency
 ```
 
-Each phase checkpoints independently. Failed runs resume from last successful point.
+Build phases checkpoint once per shared haystack; search, answer, and evaluation checkpoint per
+question. Failed runs resume only when the pinned dataset, protocol, provider adapter, models, and
+retrieval configuration still match.
+
+BEAM uses a per-session causal build barrier: each conversation stays ordered as
+`add -> ready -> checkpoint -> next session`, while separate conversations may run concurrently.
+
+For BEAM, the report keeps the paper score (macro-average across the ten memory abilities) separate
+from pass accuracy (`question score >= 0.5`). Event-ordering questions use the published normalized
+Kendall tau-b score rather than a nugget average. Combined 1M/10M runs
+report each tier separately and label their cross-tier macro as a MemoryBench aggregate, not as a paper score.
+Limited or sampled runs are labeled `beamScorePartial` and cannot enter the ranked leaderboard; only
+the exact validated 700-question 1M or 200-question 10M cohort receives the official `beamScore` key.
+
+The explicit `mem0-nugget` profile is an experimental comparison protocol. It uses the public mem0
+answer/judge prompts, GPT-5 judge identity, mem0's numeric score clamp, and ordinary nugget averages
+for all ten abilities—including event ordering. Its primary metric is `mem0NuggetAverage`, never
+`beamScore`. GPT-5 answering and judging use OpenAI Chat Completions, omit temperature and reasoning
+effort, allow 4,096 completion tokens, and use up to five outer attempts with a 120-second deadline
+and 2/4/6/8-second backoff. Each outer attempt retains the pinned client's two inner transport
+retries. The direct-K50 command above requests and answers with 50 results. It is not an exact
+reproduction of mem0's published Top-50 result: the pinned public mem0 runner retrieves 200 and then
+applies an answer cutoff of 50, while this harness currently permits at most 100 results per direct
+provider request. If all five answering attempts exhaust without non-empty text—including transport
+failures—this profile preserves Mem0's terminal behavior by checkpointing the empty hypothesis and
+evaluating it; other protocols remain fail-closed. The profile also fails closed on schema-invalid judge output instead of using
+mem0's raw-text `1.0`/`0.5` marker fallback. Source-build reuse validates the dataset, ordered
+haystacks, ingestion policy, provider adapter/configuration, and completed indexing before retaining
+the existing containers.
 
 ## MemScore
 
@@ -135,7 +181,7 @@ accuracy% / latencyMs / contextTokens
 
 | Component | What it measures |
 |-----------|-----------------|
-| **Quality** | Answer accuracy — `(correct / total) * 100` from judge evaluations |
+| **Quality** | The benchmark protocol's primary quality metric (legacy benchmarks use binary accuracy; BEAM uses its continuous paper score) |
 | **Latency** | Average search response time in milliseconds |
 | **Tokens** | Average context tokens sent to the answering model (counted client-side) |
 

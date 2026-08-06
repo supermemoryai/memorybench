@@ -11,6 +11,7 @@ export interface RunSummary {
   status: "initializing" | "pending" | "running" | "stopping" | "completed" | "partial" | "failed"
   summary: {
     total: number
+    builds?: number
     ingested: number
     indexed: number
     searched: number
@@ -23,24 +24,99 @@ export interface RunSummary {
     }
   }
   accuracy: number | null
+  dataPath?: string
+  datasetRevision?: string
+  retrievalTopK?: number
+  benchmarkScope?: Record<string, unknown>
+  datasetIdentity?: Record<string, unknown>
+  benchmarkInputFingerprint?: string
+  protocolIdentity?: Record<string, unknown>
+  selectedQuestionIdsDigest?: string
+  providerPromptFingerprint?: string
+}
+
+export interface ProtocolEvaluation {
+  primaryScore: number
+  passed?: boolean
+  label?: string
+  explanation?: string
+  metrics?: Record<string, number>
+  details?: Record<string, unknown>
+}
+
+export interface BuildCheckpoint {
+  buildId: string
+  containerTag: string
+  ingest: { status: string; error?: string }
+  indexing: { status: string; error?: string; failedIds?: string[] }
 }
 
 export interface QuestionCheckpoint {
   questionId: string
-  containerTag: string
+  buildId?: string
+  /** Legacy mirror returned by the question-detail endpoint. */
+  containerTag?: string
+  build?: BuildCheckpoint
   question: string
   groundTruth: string
   questionType: string
   phases: {
-    ingest: { status: string; completedSessions: string[] }
-    indexing: { status: string }
-    search: { status: string; results?: any[] }
-    answer: { status: string; hypothesis?: string }
-    evaluate: { status: string; score?: number; label?: string; explanation?: string }
+    /** Legacy schema only; shared-build checkpoints keep these phases on `build`. */
+    ingest?: { status: string; completedSessions?: string[]; error?: string }
+    indexing?: { status: string; error?: string }
+    search: {
+      status: string
+      retrievalPlan?: {
+        query: string
+        requestedTopK: number
+        answerCutoff: number
+        threshold?: number
+        searchMode?: string
+        filters?: Record<string, unknown>
+      }
+      results?: any[]
+      requestedCount?: number
+      rawReturnedCount?: number
+      returnedCount?: number
+      normalizedCount?: number
+      droppedCount?: number
+      providerRequests?: Array<{
+        operation: string
+        limit: number
+        parameters?: Record<string, unknown>
+      }>
+      answerCutoff?: number
+      answerEvidenceCount?: number
+      durationMs?: number
+      error?: string
+    }
+    answer: {
+      status: string
+      hypothesis?: string
+      promptTokens?: number
+      basePromptTokens?: number
+      contextTokens?: number
+      evidenceCount?: number
+      durationMs?: number
+      error?: string
+    }
+    evaluate: {
+      status: string
+      evaluation?: ProtocolEvaluation
+      score?: number
+      primaryScore?: number
+      passed?: boolean
+      label?: string
+      explanation?: string
+      metrics?: Record<string, number>
+      details?: Record<string, unknown>
+      error?: string
+    }
   }
 }
 
 export interface RunDetail extends RunSummary {
+  builds?: Record<string, BuildCheckpoint>
   questions: Record<string, QuestionCheckpoint>
 }
 
@@ -54,6 +130,16 @@ export interface Benchmark {
   name: string
   displayName: string
   description: string
+  scope?: {
+    displayName: string
+    includedTiers: string[]
+    coverage: "full" | "subset"
+  }
+  requiredJudge?: {
+    provider: string
+    modelId: string
+    modelAlias: string
+  }
 }
 
 export interface QuestionTypeInfo {
@@ -103,7 +189,7 @@ export async function getRun(runId: string): Promise<RunDetail> {
   return fetchApi(`/api/runs/${encodeURIComponent(runId)}`)
 }
 
-export async function getRunReport(runId: string): Promise<any> {
+export async function getRunReport(runId: string): Promise<BenchmarkResult> {
   return fetchApi(`/api/runs/${encodeURIComponent(runId)}/report`)
 }
 
@@ -180,6 +266,9 @@ export async function startRun(params: {
   force?: boolean
   fromPhase?: PhaseId
   sourceRunId?: string
+  dataPath?: string
+  datasetRevision?: string
+  retrievalTopK?: number
 }): Promise<{ message: string; runId: string }> {
   return fetchApi("/api/runs/start", {
     method: "POST",
@@ -203,7 +292,14 @@ export async function getBenchmarks(): Promise<{ benchmarks: Benchmark[] }> {
 
 export async function getBenchmarkQuestions(
   benchmark: string,
-  params?: { page?: number; limit?: number; type?: string }
+  params?: {
+    page?: number
+    limit?: number
+    type?: string
+    dataPath?: string
+    datasetRevision?: string
+    retrievalTopK?: number
+  }
 ): Promise<
   PaginatedResponse<{
     questionId: string
@@ -216,6 +312,11 @@ export async function getBenchmarkQuestions(
   if (params?.page) searchParams.set("page", params.page.toString())
   if (params?.limit) searchParams.set("limit", params.limit.toString())
   if (params?.type) searchParams.set("type", params.type)
+  if (params?.dataPath) searchParams.set("dataPath", params.dataPath)
+  if (params?.datasetRevision) searchParams.set("datasetRevision", params.datasetRevision)
+  if (params?.retrievalTopK != null) {
+    searchParams.set("retrievalTopK", params.retrievalTopK.toString())
+  }
 
   const query = searchParams.toString()
   return fetchApi(`/api/benchmarks/${benchmark}/questions${query ? `?${query}` : ""}`)
@@ -248,6 +349,139 @@ export interface LatencyByPhase {
   total: LatencyStats
 }
 
+export interface RetrievalSummary {
+  hitAtK: number
+  precisionAtK: number
+  recallAtK: number
+  f1AtK: number
+  mrr: number
+  ndcg: number
+  k: number
+}
+
+export interface QuestionTypeSummary {
+  total: number
+  correct: number
+  accuracy: number
+  averageScore?: number
+  passAccuracy?: number
+  retrieval?: RetrievalSummary
+}
+
+export interface BenchmarkQuality {
+  primaryMetric?: { key: string; value: number; higherIsBetter: boolean }
+  metrics: Record<string, number>
+  bySlice?: Record<string, Record<string, number>>
+}
+
+export interface LeaderboardComparisonIdentity {
+  schemaVersion: 3
+  benchmark: string
+  benchmarkScope: Record<string, unknown>
+  datasetIdentity: Record<string, unknown>
+  datasetFingerprint: string
+  questionSetFingerprint: string
+  benchmarkInputFingerprint: string
+  protocolIdentity: Record<string, unknown>
+  protocolFingerprint: string
+  retrievalTopK: number | null
+  judgeModel: string
+  answeringModel: string
+  answeringRuntimeFingerprint: string
+  providerPromptFingerprint: string | null
+  primaryMetric: { key: string; value: number; higherIsBetter: boolean }
+  cohortKey: string
+  legacy: boolean
+}
+
+export interface BuildMetric {
+  buildId: string
+  containerTag: string
+  sourceRunId?: string
+  reused?: boolean
+  reusedPhases?: { ingest: boolean; indexing: boolean }
+  ingestLatencyMs: number
+  indexingLatencyMs: number
+  buildWallClockMs: number
+  buildWorkMs: number
+  attemptCount?: number
+  attempts?: Array<{
+    phase: "ingest" | "indexing"
+    attempt: number
+    startedAt: string
+    completedAt?: string
+    durationMs?: number
+    status: "in_progress" | "completed" | "failed"
+    costUsd: number | null
+    error?: string
+  }>
+  usage?: UsageMetric
+  costUsd?: number | null
+}
+
+export interface UsageMetric {
+  requestCount?: number
+  tokenUsageCompleteRequestCount?: number
+  tokenUsagePartialRequestCount?: number
+  tokenUsageUnknownRequestCount?: number
+  inputTokens?: number
+  outputTokens?: number
+  totalTokens?: number
+}
+
+export interface BuildReport {
+  uniqueBuildCount: number
+  sumContainerBuildWorkMs: number
+  buildPhaseWallClockMs: number
+  totalBuildCostUsd: number | null
+  knownCostBuildCount: number
+  totalCostBuildCount: number
+  items: BuildMetric[]
+}
+
+export interface CostCoverageReport {
+  totalCostUsd: number | null
+  knownCostCount: number
+  totalCostCount: number
+}
+
+export interface RunCostReport {
+  query: CostCoverageReport
+  evaluation: CostCoverageReport
+}
+
+export interface QuestionMetric {
+  questionId: string
+  buildId: string
+  searchLatencyMs: number
+  answerLatencyMs: number
+  onlineQueryLatencyMs: number
+  evaluationLatencyMs: number
+  queryUsage?: UsageMetric
+  evaluationUsage?: UsageMetric
+  queryCostUsd: number | null
+  evaluationCostUsd: number | null
+  configuredTopK?: number
+  providerRequestLimit?: number
+  rawReturnedCount?: number
+  returnedCount?: number
+  normalizedCount?: number
+  droppedCount?: number
+  answerCutoff?: number
+  answerEvidenceCount?: number
+  contextTokens?: number
+  searchMode?: string
+  threshold?: number
+  providerRequests?: Array<{
+    operation: string
+    limit: number
+    parameters?: Record<string, unknown>
+  }>
+  buildAllocationQuestionCount?: number
+  allocatedBuildWorkMs?: number
+  amortizedOnlinePlusBuildWorkMs?: number
+}
+
 // Evaluation result for individual questions
 export interface EvaluationResult {
   questionId: string
@@ -256,8 +490,12 @@ export interface EvaluationResult {
   groundTruth: string
   hypothesis: string
   score: number
+  passed?: boolean
+  primaryScore?: number
   label: string
   explanation: string
+  metrics?: Record<string, number>
+  details?: Record<string, unknown>
   searchResults?: any[]
   searchDurationMs?: number
   answerDurationMs?: number
@@ -274,9 +512,28 @@ export interface LeaderboardEntry {
   accuracy: number
   totalQuestions: number
   correctCount: number
-  byQuestionType: Record<string, { total: number; correct: number; accuracy: number }>
+  averageScore?: number
+  benchmarkScope: Record<string, unknown>
+  datasetIdentity: Record<string, unknown>
+  datasetFingerprint: string
+  questionSetFingerprint: string
+  benchmarkInputFingerprint: string
+  protocolFingerprint: string
+  retrievalTopK: number | null
+  primaryMetric: { key: string; value: number; higherIsBetter: boolean }
+  comparisonIdentity: LeaderboardComparisonIdentity
+  cohortKey: string
+  cohortRank: number
+  cohortSize: number
+  quality?: BenchmarkQuality
+  builds?: BuildReport
+  costs?: RunCostReport
+  questionMetrics?: QuestionMetric[]
+  protocolIdentity?: Record<string, unknown>
+  byQuestionType: Record<string, QuestionTypeSummary>
   questionTypeRegistry: QuestionTypeRegistry | null
   latencyStats: LatencyByPhase | null
+  retrieval?: RetrievalSummary
   evaluations: EvaluationResult[]
   providerCode: string
   promptsUsed: Record<string, string> | null
@@ -335,6 +592,7 @@ export interface CompareRunInfo {
   error?: string
   progress?: {
     total: number
+    builds?: number
     ingested: number
     indexed: number
     searched: number
@@ -353,6 +611,7 @@ export interface CompareRunProgress {
   runId: string
   progress: {
     total: number
+    builds?: number
     ingested: number
     indexed: number
     searched: number
@@ -366,6 +625,10 @@ export interface CompareSummary {
   compareId: string
   providers: string[]
   benchmark: string
+  benchmarkScope?: Record<string, unknown>
+  datasetIdentity?: Record<string, unknown>
+  benchmarkInputFingerprint?: string
+  selectedQuestionIdsDigest?: string
   judge: string
   answeringModel: string
   status: CompareStatus
@@ -385,7 +648,18 @@ export interface BenchmarkResult {
   runId: string
   provider: string
   benchmark: string
+  selectedQuestionIdsDigest?: string
+  retrievalTopK?: number
+  datasetIdentity?: Record<string, unknown>
+  providerPromptFingerprint?: string
   version?: string
+  memscore?: string
+  benchmarkScope?: {
+    displayName: string
+    includedTiers: string[]
+    coverage: "full" | "subset"
+  }
+  protocolIdentity?: Record<string, unknown>
   // Fields can be at root level or nested in summary
   accuracy?: number
   totalQuestions?: number
@@ -394,20 +668,17 @@ export interface BenchmarkResult {
     totalQuestions: number
     correctCount: number
     accuracy: number
+    averageScore?: number
   }
-  byQuestionType: Record<string, { total: number; correct: number; accuracy: number }>
+  quality?: BenchmarkQuality
+  builds?: BuildReport
+  costs?: RunCostReport
+  questionMetrics?: QuestionMetric[]
+  byQuestionType: Record<string, QuestionTypeSummary>
   questionTypeRegistry: QuestionTypeRegistry | null
   latency?: LatencyByPhase
   latencyStats?: LatencyByPhase | null
-  retrieval?: {
-    hitAtK: number
-    precisionAtK: number
-    recallAtK: number
-    f1AtK: number
-    mrr: number
-    ndcg: number
-    k: number
-  }
+  retrieval?: RetrievalSummary
   evaluations?: EvaluationResult[]
   providerCode?: string
   promptsUsed?: Record<string, string> | null
@@ -420,6 +691,14 @@ export interface CompareReport {
   benchmark: string
   judge: string
   answeringModel: string
+  comparison: {
+    comparable: boolean
+    identity?: { key: string; higherIsBetter: boolean }
+    identities: string[]
+    mismatchReasons: string[]
+    bestValue?: number
+    winners: string[]
+  }
   reports: Array<{
     provider: string
     report: BenchmarkResult
@@ -445,6 +724,9 @@ export async function startCompare(params: {
   judgeModel: string
   answeringModel?: string
   sampling?: SamplingConfig
+  dataPath?: string
+  datasetRevision?: string
+  retrievalTopK?: number
 }): Promise<{ message: string; compareId: string }> {
   return fetchApi("/api/compare/start", {
     method: "POST",

@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test-and-typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.6
+
+      - name: Install backend dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Install UI dependencies
+        working-directory: ui
+        run: bun install --frozen-lockfile
+
+      - name: Run tests
+        run: bun test
+
+      - name: Typecheck backend
+        run: bunx tsc --noEmit
+
+      - name: Typecheck UI
+        working-directory: ui
+        run: bunx tsc -p tsconfig.json --noEmit
+
+      - name: Check formatting
+        run: bun run format:check

@@ -1,4 +1,4 @@
-import { ZepClient, Zep } from "@getzep/zep-cloud"
+import { ZepClient } from "@getzep/zep-cloud"
 import type {
   Provider,
   ProviderConfig,
@@ -6,12 +6,129 @@ import type {
   IngestResult,
   SearchOptions,
   IndexingProgressCallback,
+  ProviderSearchResponse,
 } from "../../types/provider"
-import type { UnifiedSession } from "../../types/unified"
+import type {
+  CanonicalIngestionDocument,
+  ProviderResultDropDiagnostic,
+  UnifiedSearchResult,
+} from "../../types/unified"
 import { logger } from "../../utils/logger"
+import { stableSha256 } from "../../utils/stable"
 import { ZEP_PROMPTS } from "./prompts"
+import {
+  asFiniteNumber,
+  asNonEmptyString,
+  asRecord,
+  assertResultBudget,
+  rankResults,
+  recordResultDrop,
+  requireSearchLimit,
+  createProviderSearchResponse,
+} from "../normalization"
 
 const MAX_DATA_SIZE = 9500
+
+async function withDeadline<T>(
+  operation: Promise<T>,
+  deadlineMs: number,
+  timeoutMessage: string
+): Promise<T> {
+  const remainingMs = deadlineMs - Date.now()
+  if (remainingMs <= 0) throw new Error(timeoutMessage)
+
+  let timeout: ReturnType<typeof setTimeout> | undefined
+  try {
+    return await Promise.race([
+      operation,
+      new Promise<never>((_, reject) => {
+        timeout = setTimeout(() => reject(new Error(timeoutMessage)), remainingMs)
+      }),
+    ])
+  } finally {
+    if (timeout) clearTimeout(timeout)
+  }
+}
+
+export function allocateZepSearchBudget(limit: number): { edgeLimit: number; nodeLimit: number } {
+  requireSearchLimit(limit, "zep")
+  return {
+    edgeLimit: Math.ceil(limit / 2),
+    nodeLimit: Math.floor(limit / 2),
+  }
+}
+
+export function normalizeZepSearchResults(
+  rawResults: unknown[],
+  limit: number,
+  threshold?: number,
+  droppedResults: ProviderResultDropDiagnostic[] = []
+): UnifiedSearchResult[] {
+  requireSearchLimit(limit, "zep")
+  assertResultBudget(rawResults.length, limit, "zep")
+
+  const normalized: Array<Omit<UnifiedSearchResult, "rank"> & { score?: number }> = []
+  for (const [index, rawResult] of rawResults.entries()) {
+    const result = asRecord(rawResult)
+    if (!result) {
+      recordResultDrop(droppedResults, index, "malformed-result")
+      continue
+    }
+
+    const resultType = result._type
+    const id = asNonEmptyString(result.uuid)
+    const score = asFiniteNumber(result.relevance) ?? asFiniteNumber(result.score)
+    if (!id) {
+      recordResultDrop(droppedResults, index, "missing-id")
+      continue
+    }
+    if (threshold !== undefined && score !== undefined && score < threshold) {
+      recordResultDrop(droppedResults, index, "below-threshold")
+      continue
+    }
+
+    if (resultType === "edge") {
+      const text = asNonEmptyString(result.fact)
+      if (!text) {
+        recordResultDrop(droppedResults, index, "empty-text")
+        continue
+      }
+      normalized.push({
+        id,
+        text,
+        ...(score !== undefined ? { score } : {}),
+        provider: "zep",
+        resultType: "graph-edge",
+      })
+      continue
+    }
+
+    if (resultType === "node") {
+      const name = asNonEmptyString(result.name)
+      const summary = asNonEmptyString(result.summary)
+      const text = name && summary ? `${name}: ${summary}` : (summary ?? name)
+      if (!text) {
+        recordResultDrop(droppedResults, index, "empty-text")
+        continue
+      }
+      normalized.push({
+        id,
+        text,
+        ...(score !== undefined ? { score } : {}),
+        provider: "zep",
+        resultType: "graph-node",
+      })
+      continue
+    }
+
+    recordResultDrop(droppedResults, index, "unsupported-result-type")
+  }
+
+  normalized.sort(
+    (a, b) => (b.score ?? Number.NEGATIVE_INFINITY) - (a.score ?? Number.NEGATIVE_INFINITY)
+  )
+  return rankResults(normalized)
+}
 
 function splitIntoChunks(text: string, maxSize: number): string[] {
   if (text.length <= maxSize) return [text]
@@ -81,6 +198,8 @@ const ZEP_ENTITY_TYPES = {
 
 export class ZepProvider implements Provider {
   name = "zep"
+  adapterVersion = "2.1.0"
+  searchRequestStructure = { kind: "split", budget: "shared-total" } as const
   prompts = ZEP_PROMPTS
   concurrency = {
     default: 10,
@@ -90,12 +209,31 @@ export class ZepProvider implements Provider {
   private graphIds: Map<string, string> = new Map()
   private ontologySet: Set<string> = new Set()
 
+  constructor(private readonly indexingTimeoutMs = 30 * 60 * 1000) {}
+
+  getIngestionConfigFingerprint(_config: ProviderConfig): string {
+    return stableSha256({
+      schemaVersion: 1,
+      provider: this.name,
+      adapterVersion: this.adapterVersion,
+      maxDataSize: MAX_DATA_SIZE,
+      episodeType: "message",
+      sourceDescription: "memorybench:<customId>:<chunk>/<count>",
+      addOrder: "sequential",
+      entityTypes: ZEP_ENTITY_TYPES,
+      indexingTimeoutMs: this.indexingTimeoutMs,
+    })
+  }
+
   async initialize(config: ProviderConfig): Promise<void> {
     this.client = new ZepClient({ apiKey: config.apiKey })
     logger.info(`Initialized Zep provider`)
   }
 
-  async ingest(sessions: UnifiedSession[], options: IngestOptions): Promise<IngestResult> {
+  async ingest(
+    documents: CanonicalIngestionDocument[],
+    options: IngestOptions
+  ): Promise<IngestResult> {
     if (!this.client) throw new Error("Provider not initialized")
 
     const graphId = `memorybench_${options.containerTag.replace(/[^a-zA-Z0-9_-]/g, "_")}`
@@ -113,64 +251,53 @@ export class ZepProvider implements Provider {
     }
 
     if (!this.ontologySet.has(graphId)) {
-      try {
-        await this.client.graph.setOntology(ZEP_ENTITY_TYPES, {}, { graphIds: [graphId] })
-        this.ontologySet.add(graphId)
-        logger.debug(`Set ontology for graph: ${graphId}`)
-      } catch (e) {
-        logger.debug(`Ontology may already be set: ${e}`)
-      }
+      await this.client.graph.setOntology(ZEP_ENTITY_TYPES, {}, { graphIds: [graphId] })
+      this.ontologySet.add(graphId)
+      logger.debug(`Set ontology for graph: ${graphId}`)
     }
 
-    const episodes: Zep.EpisodeData[] = []
-
-    for (const session of sessions) {
-      const rawDate = session.metadata?.date as string | undefined
+    const documentIds: string[] = []
+    for (const document of documents) {
+      const rawDate = document.metadata.documentDate
       const isoDate =
         rawDate && /^\d{4}-\d{2}-\d{2}$/.test(rawDate) ? `${rawDate}T00:00:00Z` : rawDate
-
-      for (const message of session.messages) {
-        const speaker = message.speaker || message.role
-        const messageData = `${speaker}: ${message.content}`
-
-        if (messageData.length > MAX_DATA_SIZE) {
-          const chunks = splitIntoChunks(messageData, MAX_DATA_SIZE)
-          for (const chunk of chunks) {
-            episodes.push({
-              type: "message",
-              data: chunk,
-              createdAt: isoDate,
-            })
-          }
-        } else {
-          episodes.push({
-            type: "message",
-            data: messageData,
-            createdAt: isoDate,
-          })
-        }
-      }
-      logger.debug(`Ingested session ${session.sessionId}`)
-    }
-
-    const taskIds: string[] = []
-
-    const BATCH_SIZE = 20
-    for (let i = 0; i < episodes.length; i += BATCH_SIZE) {
-      const batch = episodes.slice(i, i + BATCH_SIZE)
-      const result = await this.client.graph.addBatch({
-        graphId,
-        episodes: batch,
+      const chunks = splitIntoChunks(document.content, MAX_DATA_SIZE)
+      const sourceDescriptions = chunks.map(
+        (_chunk, index) => `memorybench:${document.customId}:${index + 1}/${chunks.length}`
+      )
+      const recent = await this.client.graph.episode.getByGraphId(graphId, {
+        lastn: Math.min(1000, Math.max(50, chunks.length * 2)),
       })
+      const existingBySource = new Map(
+        (recent.episodes ?? []).flatMap((episode) =>
+          episode.sourceDescription && sourceDescriptions.includes(episode.sourceDescription)
+            ? [[episode.sourceDescription, episode] as const]
+            : []
+        )
+      )
 
-      for (const episode of result) {
-        if (episode.taskId) {
-          taskIds.push(episode.taskId)
+      for (let index = 0; index < chunks.length; index++) {
+        const sourceDescription = sourceDescriptions[index]!
+        const existing = existingBySource.get(sourceDescription)
+        if (existing) {
+          documentIds.push(existing.uuid)
+          continue
         }
+
+        // Sequential adds preserve the exact chunk order; addBatch explicitly does not.
+        const episode = await this.client.graph.add({
+          graphId,
+          type: "message",
+          data: chunks[index]!,
+          createdAt: isoDate,
+          sourceDescription,
+        })
+        documentIds.push(episode.uuid)
       }
+      logger.debug(`Ingested or reconciled session ${document.metadata.sessionId}`)
     }
 
-    return { documentIds: [], taskIds: [...new Set(taskIds)] }
+    return { documentIds: [...new Set(documentIds)] }
   }
 
   async awaitIndexing(
@@ -181,45 +308,77 @@ export class ZepProvider implements Provider {
     if (!this.client) throw new Error("Provider not initialized")
 
     const taskIds = result.taskIds || []
-    if (taskIds.length === 0) {
+    const episodeIds = result.documentIds || []
+    if (taskIds.length === 0 && episodeIds.length === 0) {
       onProgress?.({ completedIds: [], failedIds: [], total: 0 })
       return
     }
 
-    const total = taskIds.length
-    const pending = new Set(taskIds)
+    const total = taskIds.length + episodeIds.length
+    const pendingTasks = new Set(taskIds)
+    const pendingEpisodes = new Set(episodeIds)
     const completedIds: string[] = []
     const failedIds: string[] = []
     let backoffMs = 500
+    const indexingStartedMs = Date.now()
+    const indexingDeadlineMs = indexingStartedMs + this.indexingTimeoutMs
 
     onProgress?.({ completedIds: [], failedIds: [], total })
 
-    while (pending.size > 0) {
-      const pendingArray = Array.from(pending)
-      const results = await Promise.allSettled(
-        pendingArray.map((taskId) => this.client!.task.get(taskId))
+    while (pendingTasks.size > 0 || pendingEpisodes.size > 0) {
+      const timeoutMessage = `Zep indexing timed out after ${this.indexingTimeoutMs}ms with ${pendingTasks.size + pendingEpisodes.size} items pending`
+      if (Date.now() >= indexingDeadlineMs) throw new Error(timeoutMessage)
+
+      const pendingTaskArray = Array.from(pendingTasks)
+      const taskResults = await withDeadline(
+        Promise.allSettled(pendingTaskArray.map((taskId) => this.client!.task.get(taskId))),
+        indexingDeadlineMs,
+        timeoutMessage
       )
 
-      for (let i = 0; i < results.length; i++) {
-        const taskId = pendingArray[i]
-        const res = results[i]
+      for (let i = 0; i < taskResults.length; i++) {
+        const taskId = pendingTaskArray[i]
+        const res = taskResults[i]
 
         if (res.status === "fulfilled") {
           const task = res.value
           if (task.status === "succeeded" || task.status === "completed") {
-            pending.delete(taskId)
+            pendingTasks.delete(taskId)
             completedIds.push(taskId)
           } else if (task.status === "failed") {
-            pending.delete(taskId)
+            pendingTasks.delete(taskId)
             failedIds.push(taskId)
           }
         }
       }
 
+      const pendingEpisodeArray = Array.from(pendingEpisodes)
+      const episodeResults = await withDeadline(
+        Promise.allSettled(
+          pendingEpisodeArray.map((episodeId) => this.client!.graph.episode.get(episodeId))
+        ),
+        indexingDeadlineMs,
+        timeoutMessage
+      )
+      for (let index = 0; index < episodeResults.length; index++) {
+        const episodeId = pendingEpisodeArray[index]!
+        const response = episodeResults[index]!
+        if (response.status === "fulfilled" && response.value.processed) {
+          pendingEpisodes.delete(episodeId)
+          completedIds.push(episodeId)
+        }
+      }
+
       onProgress?.({ completedIds: [...completedIds], failedIds: [...failedIds], total })
 
-      if (pending.size > 0) {
-        await new Promise((r) => setTimeout(r, backoffMs))
+      if (pendingTasks.size > 0 || pendingEpisodes.size > 0) {
+        const remainingMs = indexingDeadlineMs - Date.now()
+        if (remainingMs <= 0) {
+          throw new Error(
+            `Zep indexing timed out after ${this.indexingTimeoutMs}ms with ${pendingTasks.size + pendingEpisodes.size} items pending`
+          )
+        }
+        await new Promise((r) => setTimeout(r, Math.min(backoffMs, remainingMs)))
         backoffMs = Math.min(backoffMs * 1.5, 5000)
       }
     }
@@ -229,8 +388,9 @@ export class ZepProvider implements Provider {
     }
   }
 
-  async search(query: string, options: SearchOptions): Promise<unknown[]> {
+  async search(query: string, options: SearchOptions): Promise<ProviderSearchResponse> {
     if (!this.client) throw new Error("Provider not initialized")
+    const limit = requireSearchLimit(options.limit, this.name)
 
     const graphId = this.graphIds.get(options.containerTag)
     if (!graphId) {
@@ -240,8 +400,7 @@ export class ZepProvider implements Provider {
     }
 
     const finalGraphId = this.graphIds.get(options.containerTag)!
-    const edgeLimit = options.limit || 20
-    const nodeLimit = Math.min(edgeLimit, 10)
+    const { edgeLimit, nodeLimit } = allocateZepSearchBudget(limit)
 
     const [edgesResponse, nodesResponse] = await Promise.all([
       this.client.graph.search({
@@ -251,13 +410,15 @@ export class ZepProvider implements Provider {
         scope: "edges",
         reranker: "cross_encoder",
       }),
-      this.client.graph.search({
-        graphId: finalGraphId,
-        query,
-        limit: nodeLimit,
-        scope: "nodes",
-        reranker: "cross_encoder",
-      }),
+      nodeLimit > 0
+        ? this.client.graph.search({
+            graphId: finalGraphId,
+            query,
+            limit: nodeLimit,
+            scope: "nodes",
+            reranker: "cross_encoder",
+          })
+        : Promise.resolve({ nodes: [] }),
     ])
 
     const results: unknown[] = []
@@ -274,7 +435,37 @@ export class ZepProvider implements Provider {
       }
     }
 
-    return results
+    const droppedResults: ProviderResultDropDiagnostic[] = []
+    return createProviderSearchResponse({
+      results: normalizeZepSearchResults(results, limit, options.threshold, droppedResults),
+      requestedLimit: limit,
+      rawReturnedCount: results.length,
+      droppedResults,
+      providerRequests: [
+        {
+          operation: "graph.edges",
+          limit: edgeLimit,
+          parameters: {
+            scope: "edges",
+            reranker: "cross_encoder",
+            ...(options.threshold !== undefined ? { threshold: options.threshold } : {}),
+          },
+        },
+        ...(nodeLimit > 0
+          ? [
+              {
+                operation: "graph.nodes",
+                limit: nodeLimit,
+                parameters: {
+                  scope: "nodes",
+                  reranker: "cross_encoder",
+                  ...(options.threshold !== undefined ? { threshold: options.threshold } : {}),
+                },
+              },
+            ]
+          : []),
+      ],
+    })
   }
 
   async clear(containerTag: string): Promise<void> {

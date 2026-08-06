@@ -88,7 +88,7 @@ export async function showFailuresCommand(args: string[]): Promise<void> {
     if (searchResults.length > 0) {
       console.log(`Search Results (${searchResults.length}):`)
       for (let j = 0; j < Math.min(searchResults.length, 3); j++) {
-        const r = searchResults[j] as Record<string, unknown>
+        const r = searchResults[j] as unknown as Record<string, unknown>
         const content = String(r.content || r.text || r.memory || JSON.stringify(r)).slice(0, 100)
         const score = typeof r.score === "number" ? r.score.toFixed(2) : "N/A"
         console.log(`  ${j + 1}. [${score}] "${content}${content.length >= 100 ? "..." : ""}"`)

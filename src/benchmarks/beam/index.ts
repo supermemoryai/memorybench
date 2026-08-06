@@ -1,17 +1,36 @@
-import { existsSync, readFileSync, readdirSync } from "fs"
-import { join } from "path"
-import type { Benchmark, BenchmarkConfig, QuestionFilter } from "../../types/benchmark"
+import type {
+  Benchmark,
+  BenchmarkConfig,
+  BenchmarkScope,
+  DatasetIdentity,
+  QuestionFilter,
+} from "../../types/benchmark"
+import type { BenchmarkProtocol } from "../../types/protocol"
 import type {
   QuestionTypeRegistry,
   UnifiedMessage,
   UnifiedQuestion,
   UnifiedSession,
 } from "../../types/unified"
+import { BeamPaperProtocol } from "../../protocols/beam-paper"
+import { BEAM_MEM0_NUGGET_PROFILE, BeamMem0NuggetProtocol } from "../../protocols/beam-mem0"
 import { logger } from "../../utils/logger"
-import { formatBeamDate, parseBeamTimeAnchor } from "../../prompts/beam"
-import type { BeamBatch, BeamChatFile, BeamProbingQuestionsFile, BeamScale } from "./types"
+import {
+  computeDatasetFingerprint,
+  computeManifestHash,
+  describeBeamSnapshot,
+  describeBeamTemporalCoverage,
+  loadPreparedBeamDataset,
+  resolvePreparedSnapshotPath,
+} from "./dataset"
+import type {
+  BeamCanonicalChat,
+  BeamCanonicalQuestion,
+  BeamDatasetManifest,
+  BeamScale,
+} from "./types"
 
-const DEFAULT_DATA_PATH = "./data/benchmarks/beam/chats"
+const DEFAULT_DATA_PATH = "./data/benchmarks/beam"
 
 export const BEAM_QUESTION_TYPES: QuestionTypeRegistry = {
   abstention: {
@@ -66,237 +85,224 @@ export const BEAM_QUESTION_TYPES: QuestionTypeRegistry = {
   },
 }
 
-function flattenChatFile(chatFile: BeamChatFile): BeamBatch[] {
-  if (Array.isArray(chatFile)) {
-    return chatFile.flatMap((entry) => {
-      if (isBeamBatch(entry)) return [entry]
-      return flattenChatFile(entry)
+function selectTierRecord<T>(
+  record: Partial<Record<BeamScale, T>>,
+  scales: readonly BeamScale[]
+): Partial<Record<BeamScale, T>> {
+  return Object.fromEntries(
+    scales.map((scale) => {
+      const value = record[scale]
+      if (value === undefined) throw new Error(`BEAM manifest identity is missing tier ${scale}`)
+      return [scale, value]
     })
-  }
-
-  return Object.keys(chatFile)
-    .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
-    .flatMap((key) => chatFile[key] || [])
-}
-
-function isBeamBatch(value: unknown): value is BeamBatch {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    "batch_number" in value &&
-    "turns" in value &&
-    Array.isArray((value as BeamBatch).turns)
   )
 }
 
-function createGroundTruth(question: unknown): string {
-  if (typeof question === "object" && question !== null) {
-    const record = question as Record<string, unknown>
-    const answer = getQuestionAnswer(record)
-    if (answer) return answer
-
-    // Fall back to the rubric so retrieval-eval gets a useful expected-answer
-    // signal for types like instruction_following/preference_following that
-    // describe expected behavior via rubric items instead of a single answer.
-    const rubric = record.rubric
-    if (Array.isArray(rubric) && rubric.every((item) => typeof item === "string")) {
-      return rubric.join("\n")
-    }
-
-    return JSON.stringify(question)
+export function createBeamDatasetIdentity(
+  manifest: BeamDatasetManifest,
+  scales: readonly BeamScale[]
+): DatasetIdentity {
+  const selectedScales = [...scales]
+  const selectedScaleSet = new Set(selectedScales)
+  const sources = manifest.sources.filter((source) => selectedScaleSet.has(source.tier))
+  const canonicalFiles = manifest.canonicalFiles.filter((file) =>
+    selectedScales.some((scale) => file.path.startsWith(`canonical/${scale}/`))
+  )
+  const effectiveManifestCore: Omit<BeamDatasetManifest, "datasetFingerprint" | "manifestHash"> = {
+    manifestSchemaVersion: manifest.manifestSchemaVersion,
+    canonicalSchemaVersion: manifest.canonicalSchemaVersion,
+    converter: manifest.converter,
+    includedTiers: selectedScales,
+    sources,
+    canonicalFiles,
+    counts: selectTierRecord(manifest.counts, selectedScales),
+    orderedChatIds: selectTierRecord(manifest.orderedChatIds, selectedScales),
+    orderedChatIdsDigest: selectTierRecord(manifest.orderedChatIdsDigest, selectedScales),
+    orderedQuestionIds: selectTierRecord(manifest.orderedQuestionIds, selectedScales),
+    orderedQuestionIdsDigest: selectTierRecord(manifest.orderedQuestionIdsDigest, selectedScales),
   }
-
-  return JSON.stringify(question)
+  const datasetFingerprint = computeDatasetFingerprint(effectiveManifestCore)
+  const manifestHash = computeManifestHash({ ...effectiveManifestCore, datasetFingerprint })
+  return {
+    datasetFingerprint,
+    manifestHash,
+    snapshotFingerprint: manifest.datasetFingerprint,
+    snapshotManifestHash: manifest.manifestHash,
+    manifestSchemaVersion: manifest.manifestSchemaVersion,
+    canonicalSchemaVersion: manifest.canonicalSchemaVersion,
+    converterVersion: manifest.converter.version,
+    converterImplementationHash: manifest.converter.implementationHash,
+    includedTiers: selectedScales,
+    counts: effectiveManifestCore.counts as Record<string, unknown>,
+    orderedQuestionIdsDigest: effectiveManifestCore.orderedQuestionIdsDigest as Record<
+      string,
+      string
+    >,
+    sourceFiles: sources.flatMap((source) =>
+      source.files.map((file) => ({
+        path: `${source.tier}/${file.path}`,
+        byteSize: file.byteSize,
+        sha256: file.sha256,
+      }))
+    ),
+    canonicalFiles: canonicalFiles.map((file) => ({
+      path: file.path,
+      byteSize: file.byteSize,
+      sha256: file.sha256,
+    })),
+    sources: sources.map((source) => ({
+      repository: source.repository,
+      split: source.split,
+      revision: source.revision,
+      sourceIdentity: source.sourceIdentity,
+    })),
+  }
 }
 
-function getQuestionAnswer(question: Record<string, unknown>): string | undefined {
-  const answer =
-    question.answer || question.ideal_answer || question.ideal_response || question.ideal_summary
-  return typeof answer === "string" ? answer : undefined
+function createSessions(chat: BeamCanonicalChat): UnifiedSession[] {
+  return chat.sessions.map((session) => ({
+    sessionId: session.sessionId,
+    messages: session.messages.map(
+      (message): UnifiedMessage => ({
+        role: message.role,
+        content: message.content,
+        speaker: message.role,
+        timestamp: message.timeAnchor,
+      })
+    ),
+    metadata: {
+      scale: chat.scale,
+      chatId: chat.chatId,
+      ...(session.planNumber ? { planNumber: session.planNumber } : {}),
+      batchNumber: session.batchNumber,
+      turnIndex: session.turnIndex,
+      ...(session.documentDate
+        ? { date: session.documentDate, documentDate: session.documentDate }
+        : {}),
+      ...(session.hadInvalidTimeAnchor ? { hadInvalidTimeAnchor: true } : {}),
+      ...(session.hasPaddedAssistant ? { hasPaddedAssistant: true } : {}),
+    },
+  }))
+}
+
+function groundTruth(question: BeamCanonicalQuestion): string {
+  return question.referenceAnswer || question.rubric.join("\n")
 }
 
 export class BeamBenchmark implements Benchmark {
-  name: string
-  private scales: BeamScale[]
+  readonly name: string
+  readonly scope: BenchmarkScope
+  protocol: BenchmarkProtocol
+  private readonly scales: BeamScale[]
   private questions: UnifiedQuestion[] = []
-  private sessionsMap: Map<string, UnifiedSession[]> = new Map()
-  private ingestionGroupMap: Map<string, string> = new Map()
-  private dataPath: string = ""
+  private sessionsByQuestion = new Map<string, UnifiedSession[]>()
+  private ingestionGroupByQuestion = new Map<string, string>()
+  private datasetIdentity?: DatasetIdentity
 
-  constructor(scales: BeamScale[] = ["1M", "10M"], name = "beam") {
+  constructor(scales: BeamScale[], name: string) {
     this.scales = scales
     this.name = name
+    this.scope = {
+      displayName: scales.length === 1 ? `BEAM ${scales[0]}` : `BEAM ${scales.join("/")}`,
+      includedTiers: [...scales],
+      coverage: "subset",
+    }
+    this.protocol = new BeamPaperProtocol()
   }
 
-  async load(config?: BenchmarkConfig): Promise<void> {
-    this.dataPath = config?.dataPath || DEFAULT_DATA_PATH
-    const fullPath = join(process.cwd(), this.dataPath)
-
-    if (!existsSync(fullPath)) {
-      throw new Error(
-        `BEAM dataset not found at ${fullPath}. Expected chats under ${DEFAULT_DATA_PATH}/{1M,10M}.`
-      )
+  async load(config: BenchmarkConfig = {}): Promise<void> {
+    if (config.evaluationProfile === BEAM_MEM0_NUGGET_PROFILE) {
+      this.protocol = new BeamMem0NuggetProtocol({
+        retrievalTopK: config.retrievalTopK,
+        answerCutoff: config.answerCutoff,
+      })
+    } else {
+      if (config.evaluationProfile) {
+        throw new Error(`Unsupported BEAM evaluation profile: ${config.evaluationProfile}`)
+      }
+      if (config.answerCutoff !== undefined) {
+        throw new Error("--answer-cutoff is only valid with --evaluation-profile mem0-nugget")
+      }
+      this.protocol = new BeamPaperProtocol({ retrievalTopK: config.retrievalTopK })
     }
+    this.questions = []
+    this.sessionsByQuestion.clear()
+    this.ingestionGroupByQuestion.clear()
+    const dataPath = config.dataPath || DEFAULT_DATA_PATH
+    const snapshotPath = resolvePreparedSnapshotPath(dataPath, config.datasetRevision)
+    const prepared = await loadPreparedBeamDataset({
+      snapshotPath,
+      tiers: this.scales,
+      expectedDatasetFingerprint: config.datasetRevision,
+    })
+    this.datasetIdentity = createBeamDatasetIdentity(prepared.manifest, this.scales)
+    logger.info(describeBeamTemporalCoverage(prepared.manifest.counts, this.scales))
 
     for (const scale of this.scales) {
-      this.loadScale(fullPath, scale)
-    }
-
-    logger.info(
-      `Loaded ${this.questions.length} questions from BEAM (${this.scales.join(", ")})`
-    )
-  }
-
-  private loadScale(basePath: string, scale: BeamScale): void {
-    const scalePath = join(basePath, scale)
-    if (!existsSync(scalePath)) {
-      throw new Error(`BEAM ${scale} dataset not found at ${scalePath}`)
-    }
-
-    const chatDirs = readdirSync(scalePath, { withFileTypes: true })
-      .filter((entry) => entry.isDirectory() && /^\d+$/.test(entry.name))
-      .map((entry) => entry.name)
-      .sort((a, b) => Number(a) - Number(b))
-
-    for (const chatId of chatDirs) {
-      this.loadChat(scalePath, scale, chatId)
-    }
-  }
-
-  private loadChat(scalePath: string, scale: BeamScale, chatId: string): void {
-    const chatDir = join(scalePath, chatId)
-    const truncatedPath = join(chatDir, "chat_trunecated.json")
-    const fullChatPath = join(chatDir, "chat.json")
-    const chatPath = existsSync(truncatedPath) ? truncatedPath : fullChatPath
-    const probingPath = join(chatDir, "probing_questions", "probing_questions.json")
-
-    if (!existsSync(chatPath) || !existsSync(probingPath)) {
-      logger.warn(`Skipping BEAM ${scale}/${chatId}: missing chat or probing questions`)
-      return
-    }
-
-    const batches = flattenChatFile(JSON.parse(readFileSync(chatPath, "utf8")) as BeamChatFile)
-    const sessions = this.extractSessions(scale, chatId, batches)
-    const probingQuestions = JSON.parse(
-      readFileSync(probingPath, "utf8")
-    ) as BeamProbingQuestionsFile
-    const sessionIds = sessions.map((session) => session.sessionId)
-    const ingestionGroupId = `beam-${scale}-${chatId}`
-
-    for (const questionType of Object.keys(probingQuestions)) {
-      const questionsForType = probingQuestions[questionType] || []
-
-      for (let i = 0; i < questionsForType.length; i++) {
-        const probingQuestion = questionsForType[i]
-        const questionId = `${ingestionGroupId}-${questionType}-${i}`
-        const answer = getQuestionAnswer(probingQuestion)
-
-        this.questions.push({
-          questionId,
-          question: probingQuestion.question,
-          questionType,
-          groundTruth: createGroundTruth(probingQuestion),
+      const chats = prepared.chatsByTier[scale]
+      const questions = prepared.questionsByTier[scale]
+      if (!chats || !questions) throw new Error(`Prepared BEAM snapshot is missing ${scale}`)
+      const sessionsByChat = new Map(
+        chats.map((chat) => [chat.chatId, createSessions(chat)] as const)
+      )
+      for (const sourceQuestion of questions) {
+        const sessions = sessionsByChat.get(sourceQuestion.chatId)
+        if (!sessions) {
+          throw new Error(
+            `BEAM ${scale} question ${sourceQuestion.questionId} references missing chat ${sourceQuestion.chatId}`
+          )
+        }
+        const sessionIds = sessions.map((session) => session.sessionId)
+        const ingestionGroupId = `beam-${scale}-${sourceQuestion.chatId}`
+        const question: UnifiedQuestion = {
+          questionId: sourceQuestion.questionId,
+          question: sourceQuestion.question,
+          questionType: sourceQuestion.questionType,
+          groundTruth: groundTruth(sourceQuestion),
           haystackSessionIds: sessionIds,
           metadata: {
             scale,
-            chatId,
+            chatId: sourceQuestion.chatId,
             ingestionGroupId,
-            rubric: probingQuestion.rubric,
-            difficulty: probingQuestion.difficulty,
-            answer,
+            rubric: sourceQuestion.rubric,
+            difficulty: sourceQuestion.difficulty,
+            referenceAnswer: sourceQuestion.referenceAnswer,
           },
-        })
-
-        this.sessionsMap.set(questionId, sessions)
-        this.ingestionGroupMap.set(questionId, ingestionGroupId)
-      }
-    }
-  }
-
-  private extractSessions(scale: BeamScale, chatId: string, batches: BeamBatch[]): UnifiedSession[] {
-    const sessions: UnifiedSession[] = []
-
-    for (const batch of batches) {
-      // mem0's `get_time_anchor_epoch` finds the earliest non-null `time_anchor`
-      // across all messages in a batch and tags every memory derived from that
-      // batch with it. Most turns in BEAM don't carry their own anchor, so
-      // hoisting the batch-level anchor here gives dates to every session in
-      // the batch (matching mem0's per-memory dating).
-      let batchTimeAnchor: string | null | undefined = batch.time_anchor ?? null
-      if (!batchTimeAnchor) {
-        for (const turn of batch.turns) {
-          const msgWithAnchor = turn.find((m) => m.time_anchor)
-          if (msgWithAnchor?.time_anchor) {
-            batchTimeAnchor = msgWithAnchor.time_anchor
-            break
-          }
         }
-      }
-      const batchDateIso = parseBeamTimeAnchor(batchTimeAnchor)
-      const batchDateFormatted = batchDateIso ? formatBeamDate(batchDateIso) : undefined
-
-      for (let turnIndex = 0; turnIndex < batch.turns.length; turnIndex++) {
-        const turn = batch.turns[turnIndex]
-        const messages = turn
-          .filter((message) => message.content)
-          .map(
-            (message): UnifiedMessage => ({
-              role: message.role,
-              content: message.content,
-              speaker: message.role,
-              timestamp: message.time_anchor,
-            })
-          )
-
-        if (messages.length === 0) continue
-
-        sessions.push({
-          sessionId: `beam-${scale}-${chatId}-batch-${batch.batch_number}-turn-${turnIndex + 1}`,
-          messages,
-          metadata: {
-            scale,
-            chatId,
-            batchNumber: batch.batch_number,
-            turnIndex: turnIndex + 1,
-            // Match LocoMo / LongMemEval: `date` (ISO) + `formattedDate`
-            // (readable). The Supermemory provider reads these fields to
-            // (a) attach `metadata.date` to the document and (b) prefix the
-            // ingested content with a natural-language date sentence.
-            date: batchDateIso,
-            formattedDate: batchDateFormatted,
-          },
-        })
+        this.protocol.validateQuestion(question)
+        this.questions.push(question)
+        this.sessionsByQuestion.set(question.questionId, sessions)
+        this.ingestionGroupByQuestion.set(question.questionId, ingestionGroupId)
       }
     }
 
-    return sessions
+    logger.info(
+      `Loaded ${this.questions.length} validated questions from ${describeBeamSnapshot(prepared.manifest)} (${this.scales.join(", ")})`
+    )
   }
 
   getQuestions(filter?: QuestionFilter): UnifiedQuestion[] {
-    let result = [...this.questions]
-
+    let questions = [...this.questions]
     if (filter?.questionTypes?.length) {
-      result = result.filter((q) => filter.questionTypes!.includes(q.questionType))
+      questions = questions.filter((question) =>
+        filter.questionTypes!.includes(question.questionType)
+      )
     }
-
-    if (filter?.offset) {
-      result = result.slice(filter.offset)
-    }
-
-    if (filter?.limit) {
-      result = result.slice(0, filter.limit)
-    }
-
-    return result
+    if (filter?.offset != null) questions = questions.slice(filter.offset)
+    if (filter?.limit != null) questions = questions.slice(0, filter.limit)
+    return questions
   }
 
   getHaystackSessions(questionId: string): UnifiedSession[] {
-    return this.sessionsMap.get(questionId) || []
+    const sessions = this.sessionsByQuestion.get(questionId)
+    if (!sessions) throw new Error(`Unknown BEAM question: ${questionId}`)
+    return sessions
   }
 
   getGroundTruth(questionId: string): string {
-    const question = this.questions.find((q) => q.questionId === questionId)
-    return question?.groundTruth || ""
+    const question = this.questions.find((candidate) => candidate.questionId === questionId)
+    if (!question) throw new Error(`Unknown BEAM question: ${questionId}`)
+    return question.groundTruth
   }
 
   getQuestionTypes(): QuestionTypeRegistry {
@@ -304,7 +310,13 @@ export class BeamBenchmark implements Benchmark {
   }
 
   getIngestionGroupId(questionId: string): string {
-    return this.ingestionGroupMap.get(questionId) || questionId
+    const groupId = this.ingestionGroupByQuestion.get(questionId)
+    if (!groupId) throw new Error(`Unknown BEAM question: ${questionId}`)
+    return groupId
+  }
+
+  getDatasetIdentity(): DatasetIdentity | undefined {
+    return this.datasetIdentity
   }
 }
 
@@ -317,6 +329,12 @@ export class Beam1MBenchmark extends BeamBenchmark {
 export class Beam10MBenchmark extends BeamBenchmark {
   constructor() {
     super(["10M"], "beam-10m")
+  }
+}
+
+export class Beam1M10MBenchmark extends BeamBenchmark {
+  constructor() {
+    super(["1M", "10M"], "beam-1m-10m")
   }
 }
 

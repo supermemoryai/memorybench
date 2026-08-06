@@ -1,17 +1,11 @@
 "use client"
 
 import { useState } from "react"
-import { cn } from "@/lib/utils"
+import { cn, getPipelinePhaseTotal, type PipelinePhaseKey, type PipelineSummary } from "@/lib/utils"
 import { Tooltip } from "@/components/tooltip"
 
 interface PhaseProgressProps {
-  summary: {
-    total: number
-    ingested: number
-    indexed: number
-    searched: number
-    answered: number
-    evaluated: number
+  summary: PipelineSummary & {
     indexingEpisodes?: {
       total: number
       completed: number
@@ -61,9 +55,10 @@ export function PhaseProgress({ summary }: PhaseProgressProps) {
       <div className="flex items-center gap-2">
         {phases.map((phase) => {
           const count = summary[phase.key]
-          const progress = (count / summary.total) * 100
-          const isComplete = count === summary.total
-          const isInProgress = count > 0 && count < summary.total
+          const phaseTotal = getPipelinePhaseTotal(summary, phase.key as PipelinePhaseKey)
+          const progress = phaseTotal > 0 ? (count / phaseTotal) * 100 : 0
+          const isComplete = phaseTotal > 0 && count >= phaseTotal
+          const isInProgress = count > 0 && count < phaseTotal
           const isPending = count === 0
 
           const episodes = summary.indexingEpisodes
@@ -76,7 +71,7 @@ export function PhaseProgress({ summary }: PhaseProgressProps) {
 
           const displayLabel = isShowingEpisodes ? "Episodes Indexed" : phase.label
           const displayCount = isShowingEpisodes ? episodes.completed : count
-          const displayTotal = isShowingEpisodes ? episodes.total : summary.total
+          const displayTotal = isShowingEpisodes ? episodes.total : phaseTotal
           const displayProgress = isShowingEpisodes
             ? (episodes.completed / episodes.total) * 100
             : progress
@@ -131,7 +126,7 @@ export function PhaseProgress({ summary }: PhaseProgressProps) {
               <div className="flex items-center justify-between mb-1.5">
                 <span className="text-xs text-text-secondary">{phase.label}</span>
                 <span className="text-xs font-mono text-text-muted">
-                  {count}/{summary.total}
+                  {count}/{phaseTotal}
                 </span>
               </div>
               <div className="h-2 bg-bg-elevated overflow-hidden">

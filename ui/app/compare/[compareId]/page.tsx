@@ -11,8 +11,15 @@ import {
   type CompareDetail,
   type CompareReport,
   type CompareRunInfo,
+  type BenchmarkResult,
 } from "@/lib/api"
-import { formatDate, getStatusColor, cn } from "@/lib/utils"
+import {
+  formatDate,
+  getBenchmarkDisplayName,
+  getPipelineProgress,
+  getStatusColor,
+  cn,
+} from "@/lib/utils"
 import { AccuracyBarChart } from "@/components/accuracy-bar-chart"
 import { DataTable, type Column } from "@/components/data-table"
 import { CircularProgress } from "@/components/circular-progress"
@@ -20,6 +27,25 @@ import { EmptyState, DocumentIcon } from "@/components/empty-state"
 import { Tooltip } from "@/components/tooltip"
 
 const POLL_INTERVAL = 2000 // 2 seconds
+
+function getQuestionTypeQuality(report: BenchmarkResult, type: string) {
+  const slice = report.quality?.bySlice?.[type]
+  if (typeof slice?.averageScore === "number") {
+    return {
+      value: slice.averageScore,
+      metricKey: "averageScore",
+      passAccuracy:
+        typeof slice.passAccuracy === "number"
+          ? slice.passAccuracy
+          : report.byQuestionType?.[type]?.accuracy,
+    }
+  }
+  return {
+    value: report.byQuestionType?.[type]?.accuracy,
+    metricKey: "accuracy",
+    passAccuracy: report.byQuestionType?.[type]?.accuracy,
+  }
+}
 
 export default function CompareDetailPage() {
   const params = useParams()
@@ -33,6 +59,9 @@ export default function CompareDetailPage() {
   const [error, setError] = useState<string | null>(null)
   const [stopping, setStopping] = useState(false)
   const [continuing, setContinuing] = useState(false)
+  const comparablePrimaryMetric = useMemo(() => {
+    return report?.comparison.comparable ? (report.comparison.identity ?? null) : null
+  }, [report])
 
   // Check if comparison is in progress
   const isRunning = compare?.status === "running" || compare?.status === "pending"
@@ -66,24 +95,12 @@ export default function CompareDetailPage() {
             run.status === "stopping"
           const p = run.progress
           const total = p?.total || 0
-          const phasesCompleted =
-            (p?.ingested || 0) +
-            (p?.indexed || 0) +
-            (p?.searched || 0) +
-            (p?.answered || 0) +
-            (p?.evaluated || 0)
-          const totalPhases = 5 * total
-          const progress = totalPhases > 0 ? phasesCompleted / totalPhases : 0
+          const { progress, phasesFullyComplete } = p
+            ? getPipelineProgress(p)
+            : { progress: 0, phasesFullyComplete: 0 }
 
           const episodes = p?.indexingEpisodes
           const hasEpisodeData = episodes && episodes.total > 0
-
-          let phasesFullyComplete = 0
-          if ((p?.ingested || 0) === total && total > 0) phasesFullyComplete++
-          if ((p?.indexed || 0) === total && total > 0) phasesFullyComplete++
-          if ((p?.searched || 0) === total && total > 0) phasesFullyComplete++
-          if ((p?.answered || 0) === total && total > 0) phasesFullyComplete++
-          if ((p?.evaluated || 0) === total && total > 0) phasesFullyComplete++
 
           const progressContent = (
             <div className="flex items-center gap-2">
@@ -130,7 +147,7 @@ export default function CompareDetailPage() {
       },
       {
         key: "accuracy",
-        header: "Accuracy",
+        header: "Pass Accuracy",
         align: "right",
         render: (run) => {
           const accuracyPct =
@@ -321,7 +338,7 @@ export default function CompareDetailPage() {
             </div>
             <span>
               <span className="text-text-muted">Benchmark:</span>{" "}
-              <span className="capitalize">{compare.benchmark}</span>
+              <span>{getBenchmarkDisplayName(compare.benchmark, compare.benchmarkScope)}</span>
             </span>
             <span>
               <span className="text-text-muted">Judge:</span> {compare.judge}
@@ -388,9 +405,17 @@ export default function CompareDetailPage() {
           {/* Overall Accuracy Table */}
           {/* Accuracy and Latency side by side */}
           <div className="flex gap-6">
-            {/* Overall Accuracy - 35% width */}
-            <div className="w-[35%]">
-              <h3 className="text-sm font-medium text-text-primary font-display mb-3">Accuracy</h3>
+            {/* Protocol quality with legacy accuracy fallback */}
+            <div className="w-[42%]">
+              <h3 className="text-sm font-medium text-text-primary font-display mb-3">Quality</h3>
+              {report.reports.length > 1 && !comparablePrimaryMetric && (
+                <p className="text-xs text-text-muted mb-2">
+                  These reports are not like-for-like, so no cross-provider winner is highlighted.
+                  {report.comparison.mismatchReasons.length > 0 && (
+                    <> {report.comparison.mismatchReasons.join("; ")}</>
+                  )}
+                </p>
+              )}
               <div className="card">
                 <table className="w-full text-sm">
                   <thead>
@@ -399,27 +424,44 @@ export default function CompareDetailPage() {
                         Provider
                       </th>
                       <th className="text-right py-2 px-3 text-text-muted font-medium uppercase text-xs">
-                        Score
+                        Primary
+                      </th>
+                      <th className="text-right py-2 px-3 text-text-muted font-medium uppercase text-xs">
+                        Pass
                       </th>
                     </tr>
                   </thead>
                   <tbody>
                     {(() => {
-                      const rows = report.reports.map((r) => ({
-                        provider: r.provider,
-                        correct: r.report.summary?.correctCount ?? r.report.correctCount,
-                        total: r.report.summary?.totalQuestions ?? r.report.totalQuestions,
-                        accuracy: r.report.summary?.accuracy ?? r.report.accuracy,
-                      }))
-                      const validAccuracies = rows
-                        .map((r) => r.accuracy)
-                        .filter((a): a is number => a != null)
-                      const bestAccuracy =
-                        validAccuracies.length > 0 ? Math.max(...validAccuracies) : null
+                      const rows = report.reports.map((r) => {
+                        const passAccuracy = r.report.summary?.accuracy ?? r.report.accuracy
+                        return {
+                          provider: r.provider,
+                          correct: r.report.summary?.correctCount ?? r.report.correctCount,
+                          total: r.report.summary?.totalQuestions ?? r.report.totalQuestions,
+                          passAccuracy,
+                          primaryKey: r.report.quality?.primaryMetric?.key,
+                          primaryValue: r.report.quality?.primaryMetric?.value,
+                          tierScores: Object.entries(r.report.quality?.metrics ?? {}).filter(
+                            ([key, value]) =>
+                              (key === "beamScore1M" || key === "beamScore10M") &&
+                              typeof value === "number"
+                          ),
+                        }
+                      })
+                      const validPrimaryValues = rows
+                        .map((r) => r.primaryValue)
+                        .filter((value): value is number => value != null)
+                      const bestPrimary =
+                        validPrimaryValues.length > 0 && comparablePrimaryMetric
+                          ? comparablePrimaryMetric.higherIsBetter
+                            ? Math.max(...validPrimaryValues)
+                            : Math.min(...validPrimaryValues)
+                          : null
                       // Only highlight the FIRST occurrence of the best value
                       const firstBestIndex =
-                        bestAccuracy != null
-                          ? rows.findIndex((r) => r.accuracy === bestAccuracy)
+                        bestPrimary != null
+                          ? rows.findIndex((r) => r.primaryValue === bestPrimary)
                           : -1
 
                       return rows.map((row, index) => {
@@ -435,12 +477,31 @@ export default function CompareDetailPage() {
                                   isBest ? "text-status-success font-semibold" : "text-text-primary"
                                 }
                               >
-                                {row.accuracy != null ? `${(row.accuracy * 100).toFixed(1)}%` : "—"}
+                                {row.primaryValue != null
+                                  ? `${(row.primaryValue * 100).toFixed(1)}%`
+                                  : "—"}
+                              </span>
+                              <div className="text-[10px] text-text-muted font-sans">
+                                {row.primaryKey
+                                  ? row.primaryKey.replace(/([a-z])([A-Z])/g, "$1 $2")
+                                  : "no scalar primary"}
+                              </div>
+                              {row.tierScores.map(([key, value]) => (
+                                <div key={key} className="text-[10px] text-text-muted font-sans">
+                                  {key}: {((value as number) * 100).toFixed(1)}%
+                                </div>
+                              ))}
+                            </td>
+                            <td className="py-2 px-3 text-right font-mono">
+                              <span>
+                                {row.passAccuracy != null
+                                  ? `${(row.passAccuracy * 100).toFixed(1)}%`
+                                  : "—"}
                               </span>
                               {row.correct != null && row.total != null && (
-                                <span className="ml-2 text-text-muted text-xs">
+                                <div className="text-text-muted text-[10px]">
                                   ({row.correct}/{row.total})
-                                </span>
+                                </div>
                               )}
                             </td>
                           </tr>
@@ -452,9 +513,9 @@ export default function CompareDetailPage() {
               </div>
             </div>
 
-            {/* Latency - 65% width */}
+            {/* Latency */}
             {report.reports.some((r) => r.report.latency || r.report.latencyStats) && (
-              <div className="w-[65%]">
+              <div className="w-[58%]">
                 <h3 className="text-sm font-medium text-text-primary font-display mb-3">
                   Latency (median ms)
                 </h3>
@@ -463,9 +524,26 @@ export default function CompareDetailPage() {
                     <table className="w-full text-sm">
                       <thead>
                         <tr className="border-b border-border">
-                          <th className="text-left py-2 px-3 text-text-muted font-medium uppercase text-xs">
+                          <th
+                            rowSpan={2}
+                            className="text-left py-2 px-3 text-text-muted font-medium uppercase text-xs"
+                          >
                             Provider
                           </th>
+                          <th
+                            colSpan={2}
+                            className="text-center py-1 px-3 text-text-muted font-medium uppercase text-[10px]"
+                          >
+                            Build / container
+                          </th>
+                          <th
+                            colSpan={4}
+                            className="text-center py-1 px-3 text-text-muted font-medium uppercase text-[10px]"
+                          >
+                            Per question
+                          </th>
+                        </tr>
+                        <tr className="border-b border-border">
                           <th className="text-right py-2 px-3 text-text-muted font-medium uppercase text-xs">
                             Ingest
                           </th>
@@ -482,7 +560,7 @@ export default function CompareDetailPage() {
                             Evaluate
                           </th>
                           <th className="text-right py-2 px-3 text-text-muted font-medium uppercase text-xs">
-                            Total
+                            Online
                           </th>
                         </tr>
                       </thead>
@@ -556,6 +634,91 @@ export default function CompareDetailPage() {
               </div>
             )}
           </div>
+
+          {report.reports.some(
+            ({ report: runReport }) => runReport.builds || runReport.questionMetrics?.length
+          ) && (
+            <div>
+              <h3 className="text-sm font-medium text-text-primary font-display mb-3">
+                Build and Query Metrics
+              </h3>
+              <div className="card overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-border">
+                      {[
+                        "Provider",
+                        "Builds",
+                        "Build work",
+                        "Build wall-clock",
+                        "Build cost",
+                        "Online mean",
+                        "Eval mean",
+                        "Amortized mean",
+                      ].map((heading, index) => (
+                        <th
+                          key={heading}
+                          className={cn(
+                            "py-2 px-3 text-text-muted font-medium uppercase text-xs",
+                            index === 0 ? "text-left" : "text-right"
+                          )}
+                        >
+                          {heading}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {report.reports.map(({ provider, report: runReport }) => {
+                      const metrics = runReport.questionMetrics || []
+                      const mean = (values: number[]) =>
+                        values.length > 0
+                          ? values.reduce((sum, value) => sum + value, 0) / values.length
+                          : undefined
+                      const amortized = metrics
+                        .map((metric) => metric.amortizedOnlinePlusBuildWorkMs)
+                        .filter((value): value is number => value != null)
+                      const onlineMean = mean(metrics.map((metric) => metric.onlineQueryLatencyMs))
+                      const evaluationMean = mean(
+                        metrics.map((metric) => metric.evaluationLatencyMs)
+                      )
+                      const amortizedMean = mean(amortized)
+                      return (
+                        <tr key={provider} className="border-b border-border/50">
+                          <td className="py-2 px-3 text-text-primary capitalize">{provider}</td>
+                          <td className="py-2 px-3 text-right font-mono text-text-secondary">
+                            {runReport.builds?.uniqueBuildCount ?? "—"}
+                          </td>
+                          <td className="py-2 px-3 text-right font-mono text-text-secondary">
+                            {runReport.builds
+                              ? `${runReport.builds.sumContainerBuildWorkMs}ms`
+                              : "—"}
+                          </td>
+                          <td className="py-2 px-3 text-right font-mono text-text-secondary">
+                            {runReport.builds ? `${runReport.builds.buildPhaseWallClockMs}ms` : "—"}
+                          </td>
+                          <td className="py-2 px-3 text-right font-mono text-text-secondary">
+                            {runReport.builds?.totalBuildCostUsd == null
+                              ? "—"
+                              : `$${runReport.builds.totalBuildCostUsd.toFixed(4)}`}
+                          </td>
+                          <td className="py-2 px-3 text-right font-mono text-text-secondary">
+                            {onlineMean == null ? "—" : `${onlineMean.toFixed(1)}ms`}
+                          </td>
+                          <td className="py-2 px-3 text-right font-mono text-text-secondary">
+                            {evaluationMean == null ? "—" : `${evaluationMean.toFixed(1)}ms`}
+                          </td>
+                          <td className="py-2 px-3 text-right font-mono text-text-secondary">
+                            {amortizedMean == null ? "—" : `${amortizedMean.toFixed(1)}ms`}
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
 
           {/* Retrieval Metrics Table */}
           {report.reports.some((r) => r.report.retrieval) && (
@@ -709,11 +872,13 @@ export default function CompareDetailPage() {
 
           {/* By Question Type - Table and Chart */}
           {report.reports.some(
-            (r) => r.report.byQuestionType && Object.keys(r.report.byQuestionType).length > 0
+            (r) =>
+              (r.report.byQuestionType && Object.keys(r.report.byQuestionType).length > 0) ||
+              (r.report.quality?.bySlice && Object.keys(r.report.quality.bySlice).length > 0)
           ) && (
             <div>
               <h3 className="text-sm font-medium text-text-primary font-display mb-3">
-                Accuracy by Question Type
+                Quality by Question Type
               </h3>
               <div className="flex gap-8 items-stretch" style={{ minHeight: 420 }}>
                 {/* Left: Table (50%) */}
@@ -737,14 +902,14 @@ export default function CompareDetailPage() {
                       </thead>
                       <tbody>
                         {(() => {
-                          // Collect all question types
                           const allTypes = new Set<string>()
                           report.reports.forEach((r) => {
-                            if (r.report.byQuestionType) {
-                              Object.keys(r.report.byQuestionType).forEach((type) =>
-                                allTypes.add(type)
-                              )
-                            }
+                            Object.keys(r.report.byQuestionType || {}).forEach((type) =>
+                              allTypes.add(type)
+                            )
+                            Object.keys(r.report.quality?.bySlice || {})
+                              .filter((type) => !type.startsWith("tier:"))
+                              .forEach((type) => allTypes.add(type))
                           })
 
                           const rows = Array.from(allTypes)
@@ -752,19 +917,25 @@ export default function CompareDetailPage() {
                             .map((type) => {
                               const values = report.reports.map((r) => ({
                                 provider: r.provider,
-                                accuracy: r.report.byQuestionType?.[type]?.accuracy,
+                                ...getQuestionTypeQuality(r.report, type),
                               }))
 
                               const validValues = values
-                                .map((v) => v.accuracy)
-                                .filter((a) => a !== undefined) as number[]
-                              const bestAccuracy =
-                                validValues.length > 0 ? Math.max(...validValues) : undefined
-
-                              // Find the index of the FIRST best value (for tie-breaking)
+                                .map((entry) => entry.value)
+                                .filter((value): value is number => value != null)
+                              const comparable =
+                                new Set(
+                                  values
+                                    .filter((entry) => entry.value != null)
+                                    .map((entry) => entry.metricKey)
+                                ).size === 1
+                              const bestValue =
+                                comparable && validValues.length > 0
+                                  ? Math.max(...validValues)
+                                  : undefined
                               const firstBestIndex =
-                                bestAccuracy !== undefined
-                                  ? values.findIndex((v) => v.accuracy === bestAccuracy)
+                                bestValue !== undefined
+                                  ? values.findIndex((entry) => entry.value === bestValue)
                                   : -1
 
                               return (
@@ -772,48 +943,63 @@ export default function CompareDetailPage() {
                                   <td className="py-4 px-4 text-text-secondary">
                                     {type.replace(/[-_]/g, "-")}
                                   </td>
-                                  {values.map(({ provider, accuracy }, index) => {
-                                    // Only highlight the FIRST occurrence of the best value
-                                    const isBest = index === firstBestIndex
-                                    return (
-                                      <td key={provider} className="py-4 px-4 text-right font-mono">
-                                        {accuracy !== undefined ? (
-                                          <span
-                                            className={
-                                              isBest
-                                                ? "text-white font-semibold"
-                                                : "text-text-secondary"
-                                            }
-                                          >
-                                            {(accuracy * 100).toFixed(1)}%
-                                          </span>
-                                        ) : (
-                                          <span className="text-text-muted">—</span>
-                                        )}
-                                      </td>
-                                    )
-                                  })}
+                                  {values.map(
+                                    ({ provider, value, metricKey, passAccuracy }, index) => {
+                                      const isBest = index === firstBestIndex
+                                      return (
+                                        <td
+                                          key={provider}
+                                          className="py-4 px-4 text-right font-mono"
+                                        >
+                                          {value !== undefined ? (
+                                            <>
+                                              <span
+                                                className={
+                                                  isBest
+                                                    ? "text-white font-semibold"
+                                                    : "text-text-secondary"
+                                                }
+                                              >
+                                                {(value * 100).toFixed(1)}%
+                                              </span>
+                                              <div className="text-[10px] text-text-muted font-sans">
+                                                {metricKey === "averageScore"
+                                                  ? `avg · ${passAccuracy != null ? `${(passAccuracy * 100).toFixed(1)}% pass` : "pass unavailable"}`
+                                                  : "legacy accuracy"}
+                                              </div>
+                                            </>
+                                          ) : (
+                                            <span className="text-text-muted">—</span>
+                                          )}
+                                        </td>
+                                      )
+                                    }
+                                  )}
                                 </tr>
                               )
                             })
 
-                          // Calculate overall accuracy for each provider
                           const overallValues = report.reports.map((r) => {
-                            const accuracy = r.report.summary?.accuracy ?? r.report.accuracy
                             return {
                               provider: r.provider,
-                              accuracy,
+                              value: r.report.quality?.primaryMetric?.value,
+                              metricKey:
+                                r.report.quality?.primaryMetric?.key ?? "no scalar primary",
                             }
                           })
 
                           const validOverall = overallValues
-                            .map((v) => v.accuracy)
-                            .filter((a) => a !== undefined) as number[]
+                            .map((entry) => entry.value)
+                            .filter((value): value is number => value != null)
                           const bestOverall =
-                            validOverall.length > 0 ? Math.max(...validOverall) : undefined
+                            validOverall.length > 0 && comparablePrimaryMetric
+                              ? comparablePrimaryMetric.higherIsBetter
+                                ? Math.max(...validOverall)
+                                : Math.min(...validOverall)
+                              : undefined
                           const firstBestOverallIndex =
                             bestOverall !== undefined
-                              ? overallValues.findIndex((v) => v.accuracy === bestOverall)
+                              ? overallValues.findIndex((entry) => entry.value === bestOverall)
                               : -1
 
                           return (
@@ -824,20 +1010,25 @@ export default function CompareDetailPage() {
                                 <td className="py-4 px-4 text-text-primary font-semibold">
                                   Overall
                                 </td>
-                                {overallValues.map(({ provider, accuracy }, index) => {
+                                {overallValues.map(({ provider, value, metricKey }, index) => {
                                   const isBest = index === firstBestOverallIndex
                                   return (
                                     <td key={provider} className="py-4 px-4 text-right font-mono">
-                                      {accuracy !== undefined ? (
-                                        <span
-                                          className={
-                                            isBest
-                                              ? "text-white font-semibold"
-                                              : "text-text-secondary"
-                                          }
-                                        >
-                                          {(accuracy * 100).toFixed(1)}%
-                                        </span>
+                                      {value !== undefined ? (
+                                        <>
+                                          <span
+                                            className={
+                                              isBest
+                                                ? "text-white font-semibold"
+                                                : "text-text-secondary"
+                                            }
+                                          >
+                                            {(value * 100).toFixed(1)}%
+                                          </span>
+                                          <div className="text-[10px] text-text-muted font-sans">
+                                            {metricKey.replace(/([a-z])([A-Z])/g, "$1 $2")}
+                                          </div>
+                                        </>
                                       ) : (
                                         <span className="text-text-muted">—</span>
                                       )}
@@ -856,13 +1047,30 @@ export default function CompareDetailPage() {
                 {/* Right: Bar Chart (50%) */}
                 <div className="w-[50%] flex flex-col">
                   {(() => {
-                    // Prepare data for chart
                     const allTypes = new Set<string>()
                     report.reports.forEach((r) => {
-                      if (r.report.byQuestionType) {
-                        Object.keys(r.report.byQuestionType).forEach((type) => allTypes.add(type))
-                      }
+                      Object.keys(r.report.byQuestionType || {}).forEach((type) =>
+                        allTypes.add(type)
+                      )
+                      Object.keys(r.report.quality?.bySlice || {})
+                        .filter((type) => !type.startsWith("tier:"))
+                        .forEach((type) => allTypes.add(type))
                     })
+
+                    const hasMixedMetrics = Array.from(allTypes).some((type) => {
+                      const metricKeys = report.reports
+                        .map((entry) => getQuestionTypeQuality(entry.report, type))
+                        .filter((quality) => quality.value != null)
+                        .map((quality) => quality.metricKey)
+                      return new Set(metricKeys).size > 1
+                    })
+                    if (hasMixedMetrics) {
+                      return (
+                        <div className="card h-full flex items-center justify-center text-sm text-text-muted text-center">
+                          Chart hidden because these runs use different per-type metrics.
+                        </div>
+                      )
+                    }
 
                     const chartData = Array.from(allTypes)
                       .sort()
@@ -870,7 +1078,7 @@ export default function CompareDetailPage() {
                         type,
                         values: report.reports.map((r) => ({
                           provider: r.provider,
-                          accuracy: r.report.byQuestionType?.[type]?.accuracy,
+                          accuracy: getQuestionTypeQuality(r.report, type).value,
                         })),
                       }))
 

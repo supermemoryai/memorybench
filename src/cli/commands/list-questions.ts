@@ -6,6 +6,8 @@ interface ListQuestionsArgs {
   offset: number
   limit: number
   type?: string
+  dataPath?: string
+  datasetRevision?: string
 }
 
 export function parseListQuestionsArgs(args: string[]): ListQuestionsArgs | null {
@@ -24,6 +26,10 @@ export function parseListQuestionsArgs(args: string[]): ListQuestionsArgs | null
       parsed.limit = parseInt(args[++i], 10)
     } else if (arg === "-t" || arg === "--type") {
       parsed.type = args[++i]
+    } else if (arg === "--data-path") {
+      parsed.dataPath = args[++i]
+    } else if (arg === "--dataset-revision") {
+      parsed.datasetRevision = args[++i]
     }
   }
 
@@ -52,6 +58,8 @@ export async function listQuestionsCommand(args: string[]): Promise<void> {
     console.log("  -o, --offset     Start from question number (default: 0)")
     console.log("  -l, --limit      Number of questions to show (default: 50)")
     console.log("  -t, --type       Filter by question type")
+    console.log("  --data-path PATH       Prepared dataset snapshot root")
+    console.log("  --dataset-revision ID  Expected dataset fingerprint")
     console.log("")
     console.log("Examples:")
     console.log("  bun run src/index.ts list-questions -b locomo")
@@ -61,18 +69,20 @@ export async function listQuestionsCommand(args: string[]): Promise<void> {
   }
 
   if (!getAvailableBenchmarks().includes(parsed.benchmark as BenchmarkName)) {
-    console.error(`Invalid benchmark: ${parsed.benchmark}`)
-    console.error(`Available: ${getAvailableBenchmarks().join(", ")}`)
-    return
+    throw new Error(
+      `Invalid benchmark: ${parsed.benchmark}. Available: ${getAvailableBenchmarks().join(", ")}`
+    )
   }
 
   const benchmark = createBenchmark(parsed.benchmark as BenchmarkName)
 
   try {
-    await benchmark.load()
+    await benchmark.load({
+      dataPath: parsed.dataPath,
+      datasetRevision: parsed.datasetRevision,
+    })
   } catch (e: any) {
-    console.error(`Failed to load benchmark: ${e.message}`)
-    return
+    throw new Error(`Failed to load benchmark: ${e.message}`, { cause: e })
   }
 
   let questions = benchmark.getQuestions()
@@ -88,7 +98,7 @@ export async function listQuestionsCommand(args: string[]): Promise<void> {
   const pageQuestions = questions.slice(start, end)
 
   console.log("")
-  console.log(`Benchmark: ${parsed.benchmark}`)
+  console.log(`Benchmark: ${benchmark.scope.displayName} (${parsed.benchmark})`)
   console.log(
     `Total questions: ${totalQuestions}${parsed.type ? ` (${filteredTotal} matching type "${parsed.type}")` : ""}`
   )

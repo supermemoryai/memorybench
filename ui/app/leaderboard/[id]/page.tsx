@@ -5,10 +5,12 @@ import Link from "next/link"
 import { useParams } from "next/navigation"
 import { Highlight, themes } from "prism-react-renderer"
 import { getLeaderboardEntry, type LeaderboardEntry } from "@/lib/api"
-import { cn } from "@/lib/utils"
+import { cn, getBenchmarkDisplayName } from "@/lib/utils"
 import {
   StatsGrid,
   AccuracyByType,
+  BuildMetricsTable,
+  QuestionMetricsSummary,
   LatencyTable,
   RetrievalMetrics,
   EvaluationList,
@@ -89,13 +91,38 @@ export default function LeaderboardEntryPage() {
   const formattedDate = `${addedDate.getFullYear()}-${String(addedDate.getMonth() + 1).padStart(2, "0")}-${String(addedDate.getDate()).padStart(2, "0")}`
 
   const tabs: Tab[] = ["overview", "results", "code"]
+  const primaryMetric = entry.primaryMetric ?? entry.quality?.primaryMetric
+  const includedTiers = Array.isArray(entry.benchmarkScope?.includedTiers)
+    ? entry.benchmarkScope.includedTiers.join(", ")
+    : "legacy"
+  const protocolId =
+    typeof entry.protocolIdentity?.id === "string" ? entry.protocolIdentity.id : "legacy"
+  const protocolVersion =
+    typeof entry.protocolIdentity?.version === "string" ? entry.protocolIdentity.version : "unknown"
 
   const statsCards = [
+    ...(primaryMetric && primaryMetric.key !== "accuracy"
+      ? [
+          {
+            label: primaryMetric.key.replace(/([a-z])([A-Z])/g, "$1 $2"),
+            value: `${(primaryMetric.value * 100).toFixed(1)}%`,
+            subtext: "official protocol metric",
+          },
+        ]
+      : []),
     {
-      label: "accuracy",
+      label: primaryMetric && primaryMetric.key !== "accuracy" ? "pass accuracy" : "accuracy",
       value: `${(entry.accuracy * 100).toFixed(1)}%`,
       subtext: `${entry.correctCount}/${entry.totalQuestions} correct`,
     },
+    ...(entry.averageScore != null
+      ? [
+          {
+            label: "average question score",
+            value: entry.averageScore.toFixed(3),
+          },
+        ]
+      : []),
     {
       label: "questions",
       value: entry.totalQuestions,
@@ -110,6 +137,15 @@ export default function LeaderboardEntryPage() {
       value: entry.answeringModel,
       mono: true,
     },
+    ...(entry.builds
+      ? [
+          {
+            label: "builds",
+            value: entry.builds.uniqueBuildCount,
+            subtext: `${entry.builds.sumContainerBuildWorkMs.toLocaleString()}ms total build work`,
+          },
+        ]
+      : []),
   ]
 
   return (
@@ -131,7 +167,7 @@ export default function LeaderboardEntryPage() {
         <div className="flex items-center gap-4 mt-2 text-sm text-text-secondary">
           <span>
             <span className="text-text-muted">benchmark:</span>{" "}
-            <span className="capitalize">{entry.benchmark}</span>
+            <span>{getBenchmarkDisplayName(entry.benchmark, entry.benchmarkScope)}</span>
           </span>
           <span>
             <span className="text-text-muted">original run:</span>{" "}
@@ -146,6 +182,36 @@ export default function LeaderboardEntryPage() {
             <span className="text-text-muted">notes:</span> {entry.notes}
           </div>
         )}
+      </div>
+
+      <div className="mb-6 rounded border border-border bg-bg-elevated p-4">
+        <div className="text-xs uppercase tracking-wide text-text-muted mb-3">
+          Like-for-like comparison identity
+        </div>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 text-sm">
+          <IdentityValue label="cohort" value={entry.cohortKey} />
+          <IdentityValue label="cohort rank" value={`${entry.cohortRank}/${entry.cohortSize}`} />
+          <IdentityValue label="scope tiers" value={includedTiers || "none"} />
+          <IdentityValue label="retrieval top-k" value={String(entry.retrievalTopK ?? "legacy")} />
+          <IdentityValue label="judge" value={entry.comparisonIdentity.judgeModel} />
+          <IdentityValue label="answering model" value={entry.comparisonIdentity.answeringModel} />
+          <IdentityValue label="dataset" value={entry.datasetFingerprint} />
+          <IdentityValue label="question set" value={entry.questionSetFingerprint} />
+          <IdentityValue
+            label="protocol"
+            value={`${protocolId}@${protocolVersion} · ${entry.protocolFingerprint}`}
+          />
+          <IdentityValue
+            label="primary metric"
+            value={`${entry.primaryMetric.key} (${entry.primaryMetric.higherIsBetter ? "higher" : "lower"} is better)`}
+          />
+          {entry.comparisonIdentity.providerPromptFingerprint && (
+            <IdentityValue
+              label="provider prompt"
+              value={entry.comparisonIdentity.providerPromptFingerprint}
+            />
+          )}
+        </div>
       </div>
 
       <div className="flex gap-1 border-b border-border mb-6">
@@ -170,7 +236,12 @@ export default function LeaderboardEntryPage() {
       {activeTab === "overview" && (
         <div className="space-y-6">
           <StatsGrid cards={statsCards} />
-          <AccuracyByType byQuestionType={entry.byQuestionType} />
+          <AccuracyByType
+            byQuestionType={entry.byQuestionType}
+            qualityBySlice={entry.quality?.bySlice}
+          />
+          <BuildMetricsTable builds={entry.builds} />
+          <QuestionMetricsSummary metrics={entry.questionMetrics} costs={entry.costs} />
           <LatencyTable latency={entry.latencyStats} />
           <RetrievalMetrics retrieval={entry.retrieval} byQuestionType={entry.byQuestionType} />
         </div>
@@ -186,6 +257,17 @@ export default function LeaderboardEntryPage() {
           setActiveCodeFile={setActiveCodeFile}
         />
       )}
+    </div>
+  )
+}
+
+function IdentityValue({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="min-w-0">
+      <div className="text-xs text-text-muted">{label}</div>
+      <div className="font-mono text-xs text-text-secondary truncate" title={value}>
+        {value}
+      </div>
     </div>
   )
 }

@@ -11,6 +11,22 @@ export const leaderboardEntries = sqliteTable(
     benchmark: text("benchmark").notNull(),
     version: text("version").notNull().default("baseline"),
 
+    // Immutable like-for-like comparison identity. JSON columns preserve the
+    // complete source identities; scalar fingerprints make cohorts auditable.
+    benchmarkScope: text("benchmark_scope"),
+    datasetIdentity: text("dataset_identity"),
+    datasetFingerprint: text("dataset_fingerprint"),
+    questionSetFingerprint: text("question_set_fingerprint"),
+    protocolIdentity: text("protocol_identity"),
+    protocolFingerprint: text("protocol_fingerprint"),
+    retrievalTopK: integer("retrieval_top_k"),
+    primaryMetricKey: text("primary_metric_key"),
+    primaryMetricValue: real("primary_metric_value"),
+    primaryMetricHigherIsBetter: integer("primary_metric_higher_is_better", {
+      mode: "boolean",
+    }),
+    comparisonCohortKey: text("comparison_cohort_key"),
+
     // Results snapshot
     accuracy: real("accuracy").notNull(),
     totalQuestions: integer("total_questions").notNull(),
@@ -36,11 +52,12 @@ export const leaderboardEntries = sqliteTable(
     notes: text("notes"),
   },
   (table) => ({
-    // Unique constraint: same provider+benchmark+version replaces existing entry
-    providerBenchmarkVersion: uniqueIndex("provider_benchmark_version_idx").on(
+    // A display version only replaces a result from the exact same cohort.
+    providerBenchmarkVersionCohort: uniqueIndex("provider_benchmark_version_cohort_idx").on(
       table.provider,
       table.benchmark,
-      table.version
+      table.version,
+      table.comparisonCohortKey
     ),
   })
 )

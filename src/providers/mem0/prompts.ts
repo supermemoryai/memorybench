@@ -1,20 +1,12 @@
 import type { ProviderPrompts } from "../../types/prompts"
-
-interface Mem0Memory {
-  memory?: string
-  metadata?: Record<string, unknown>
-}
+import type { UnifiedSearchResult } from "../../types/unified"
 
 export function buildMem0AnswerPrompt(question: string, context: unknown[]): string {
   const memoriesStr = context
     .map((r, i) => {
-      const mem = r as Mem0Memory
-      const metadata = mem.metadata
-      const timestampInfo =
-        metadata?.date || metadata?.timestamp
-          ? ` [Timestamp: ${metadata.date || metadata.timestamp}]`
-          : ""
-      return `[${i + 1}]${timestampInfo} ${mem.memory || JSON.stringify(r)}`
+      const memory = r as UnifiedSearchResult
+      const timestampInfo = memory.documentDate ? ` [Document date: ${memory.documentDate}]` : ""
+      return `[${i + 1}]${timestampInfo} ${memory.text}`
     })
     .join("\n\n")
 

@@ -11,6 +11,7 @@ import {
   type SelectionMode,
   type SampleType,
   type SamplingConfig,
+  type Benchmark,
 } from "@/lib/api"
 import { SingleSelect } from "@/components/single-select"
 import { MultiSelect } from "@/components/multi-select"
@@ -22,7 +23,7 @@ export default function NewComparePage() {
   const [error, setError] = useState<string | null>(null)
 
   const [providers, setProviders] = useState<{ name: string; displayName: string }[]>([])
-  const [benchmarks, setBenchmarks] = useState<{ name: string; displayName: string }[]>([])
+  const [benchmarks, setBenchmarks] = useState<Benchmark[]>([])
   const [models, setModels] = useState<any>({})
 
   const [form, setForm] = useState({
@@ -31,6 +32,9 @@ export default function NewComparePage() {
     compareId: "",
     judgeModel: "gpt-4o",
     answeringModel: "gpt-4o",
+    dataPath: "",
+    datasetRevision: "",
+    retrievalTopK: "5",
     selectionMode: "full" as SelectionMode,
     sampleType: "consecutive" as SampleType,
     perCategory: "2",
@@ -80,6 +84,15 @@ export default function NewComparePage() {
   }
 
   const displayCompareId = form.compareId || generateCompareId()
+  const selectedBenchmark = benchmarks.find((benchmark) => benchmark.name === form.benchmark)
+  const isBeam = form.benchmark.startsWith("beam-")
+
+  useEffect(() => {
+    const requiredJudge = selectedBenchmark?.requiredJudge?.modelAlias
+    if (requiredJudge && form.judgeModel !== requiredJudge) {
+      setForm((current) => ({ ...current, judgeModel: requiredJudge }))
+    }
+  }, [selectedBenchmark, form.judgeModel])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -120,6 +133,9 @@ export default function NewComparePage() {
         judgeModel: form.judgeModel,
         answeringModel: form.answeringModel,
         sampling,
+        dataPath: isBeam ? form.dataPath || undefined : undefined,
+        datasetRevision: isBeam ? form.datasetRevision || undefined : undefined,
+        retrievalTopK: isBeam ? Number(form.retrievalTopK) : undefined,
       })
 
       router.push(`/compare`)
@@ -134,6 +150,9 @@ export default function NewComparePage() {
   const providerOptions = providers.map((p) => ({ value: p.name, label: p.displayName }))
   const benchmarkOptions = benchmarks.map((b) => ({ value: b.name, label: b.displayName }))
   const modelOptions = allModels.map((m) => ({ value: m.alias, label: m.displayName || m.alias }))
+  const judgeModelOptions = selectedBenchmark?.requiredJudge
+    ? modelOptions.filter((model) => model.value === selectedBenchmark.requiredJudge!.modelAlias)
+    : modelOptions
 
   if (loading) {
     return (
@@ -207,6 +226,49 @@ export default function NewComparePage() {
           )}
         </div>
 
+        {isBeam && (
+          <div className="grid grid-cols-3 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-text-primary mb-2">
+                Prepared data path
+              </label>
+              <input
+                type="text"
+                value={form.dataPath}
+                onChange={(event) => setForm({ ...form, dataPath: event.target.value })}
+                placeholder="Default: data/benchmarks/beam"
+                className="w-full px-3 py-2.5 text-sm bg-[#222222] border border-[#333333] rounded text-text-primary placeholder-text-muted focus:outline-none focus:border-accent"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-text-primary mb-2">
+                Snapshot fingerprint
+              </label>
+              <input
+                type="text"
+                value={form.datasetRevision}
+                onChange={(event) => setForm({ ...form, datasetRevision: event.target.value })}
+                placeholder="Optional pinned fingerprint"
+                className="w-full px-3 py-2.5 text-sm bg-[#222222] border border-[#333333] rounded text-text-primary placeholder-text-muted focus:outline-none focus:border-accent font-mono"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-text-primary mb-2">
+                Retrieval Top-K
+              </label>
+              <SingleSelect
+                label="Top-K"
+                options={[5, 10, 15, 20].map((value) => ({
+                  value: String(value),
+                  label: String(value),
+                }))}
+                selected={form.retrievalTopK}
+                onChange={(value) => setForm({ ...form, retrievalTopK: value })}
+              />
+            </div>
+          </div>
+        )}
+
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium text-text-primary mb-2">
@@ -248,7 +310,7 @@ export default function NewComparePage() {
             <label className="block text-sm font-medium text-text-primary mb-2">Judge Model</label>
             <SingleSelect
               label="Select model"
-              options={modelOptions}
+              options={judgeModelOptions}
               selected={form.judgeModel}
               onChange={(value) => setForm({ ...form, judgeModel: value })}
               placeholder="Select model"

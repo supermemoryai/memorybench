@@ -9,6 +9,7 @@ import type {
 } from "../../types/unified"
 import type { LoCoMoItem, LoCoMoMessage } from "./types"
 import { logger } from "../../utils/logger"
+import { legacyBenchmarkProtocol } from "../../protocols/legacy"
 
 const DEFAULT_DATA_PATH = "./data/benchmarks/locomo/locomo10.json"
 const GITHUB_DATASET_URL =
@@ -76,6 +77,8 @@ const CATEGORY_TO_TYPE: Record<number, string> = {
 
 export class LoCoMoBenchmark implements Benchmark {
   name = "locomo"
+  scope = { displayName: "LoCoMo", includedTiers: [], coverage: "full" as const }
+  protocol = legacyBenchmarkProtocol
   private data: LoCoMoItem[] = []
   private questions: UnifiedQuestion[] = []
   private sessionsMap: Map<string, UnifiedSession[]> = new Map()

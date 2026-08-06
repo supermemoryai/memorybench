@@ -51,6 +51,21 @@ export function formatDuration(ms: number): string {
   return `${(ms / 60000).toFixed(1)}m`
 }
 
+export function getBenchmarkDisplayName(
+  benchmark: string,
+  scope?: Record<string, unknown> | { displayName?: string }
+): string {
+  if (typeof scope?.displayName === "string" && scope.displayName.trim()) {
+    return scope.displayName
+  }
+  const names: Record<string, string> = {
+    "beam-1m": "BEAM 1M",
+    "beam-10m": "BEAM 10M",
+    "beam-1m-10m": "BEAM 1M/10M",
+  }
+  return names[benchmark] ?? benchmark
+}
+
 export function getStatusColor(status: string): string {
   switch (status) {
     case "completed":
@@ -68,6 +83,85 @@ export function getStatusColor(status: string): string {
   }
 }
 
+export interface EvaluationCompatibility {
+  passed?: boolean
+  label?: string
+  score?: number
+  primaryScore?: number
+  evaluation?: EvaluationCompatibility
+}
+
+/** Resolve protocol-native judgments first, then compatibility mirrors and legacy binary scores. */
+export function getEvaluationPassState(
+  value?: EvaluationCompatibility | null
+): boolean | undefined {
+  const protocolEvaluation = value?.evaluation
+  if (typeof protocolEvaluation?.passed === "boolean") return protocolEvaluation.passed
+  if (typeof value?.passed === "boolean") return value.passed
+
+  for (const label of [protocolEvaluation?.label, value?.label]) {
+    if (typeof label !== "string") continue
+    const normalized = label.toLowerCase()
+    if (normalized === "pass" || normalized === "correct") return true
+    if (normalized === "fail" || normalized === "incorrect" || normalized === "wrong") {
+      return false
+    }
+  }
+
+  const legacyScore = value?.score ?? protocolEvaluation?.primaryScore ?? value?.primaryScore
+  return typeof legacyScore === "number" ? legacyScore === 1 : undefined
+}
+
+export function isEvaluationPassed(value?: EvaluationCompatibility | null): boolean {
+  return getEvaluationPassState(value) === true
+}
+
+export function isEvaluationFailed(value?: EvaluationCompatibility | null): boolean {
+  return getEvaluationPassState(value) === false
+}
+
+export type PipelinePhaseKey = "ingested" | "indexed" | "searched" | "answered" | "evaluated"
+
+export interface PipelineSummary {
+  total: number
+  builds?: number
+  ingested: number
+  indexed: number
+  searched: number
+  answered: number
+  evaluated: number
+}
+
+/** Shared-build runs count ingest/index per build; legacy summaries counted every phase per question. */
+export function getPipelinePhaseTotal(summary: PipelineSummary, phase: PipelinePhaseKey): number {
+  return phase === "ingested" || phase === "indexed"
+    ? (summary.builds ?? summary.total)
+    : summary.total
+}
+
+export function getPipelineProgress(summary: PipelineSummary): {
+  progress: number
+  phasesFullyComplete: number
+} {
+  const phases: PipelinePhaseKey[] = ["ingested", "indexed", "searched", "answered", "evaluated"]
+  let completedWork = 0
+  let totalWork = 0
+  let phasesFullyComplete = 0
+
+  for (const phase of phases) {
+    const phaseTotal = getPipelinePhaseTotal(summary, phase)
+    const completed = summary[phase]
+    completedWork += Math.min(completed, phaseTotal)
+    totalWork += phaseTotal
+    if (phaseTotal > 0 && completed >= phaseTotal) phasesFullyComplete++
+  }
+
+  return {
+    progress: totalWork > 0 ? completedWork / totalWork : 0,
+    phasesFullyComplete,
+  }
+}
+
 export function calculateAccuracy(
   summary: { total: number; evaluated: number } & Record<string, number>,
   questions?: Record<string, any>
@@ -79,6 +173,6 @@ export function calculateAccuracy(
   )
   if (evaluated.length === 0) return null
 
-  const correct = evaluated.filter((q: any) => q.phases?.evaluate?.score === 1).length
+  const correct = evaluated.filter((q: any) => isEvaluationPassed(q.phases?.evaluate)).length
   return (correct / evaluated.length) * 100
 }

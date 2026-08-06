@@ -1,18 +1,8 @@
 import type { ProviderPrompts } from "../../types/prompts"
-
-interface RAGSearchResult {
-  content: string
-  score: number
-  vectorScore: number
-  bm25Score: number
-  sessionId: string
-  chunkIndex: number
-  date?: string
-  metadata?: Record<string, unknown>
-}
+import type { UnifiedSearchResult } from "../../types/unified"
 
 function buildRAGContext(context: unknown[]): string {
-  const results = context as RAGSearchResult[]
+  const results = context as UnifiedSearchResult[]
 
   if (results.length === 0) {
     return "No relevant memory chunks were retrieved."
@@ -20,17 +10,8 @@ function buildRAGContext(context: unknown[]): string {
 
   return results
     .map((result, i) => {
-      const scoreParts = [
-        `hybrid: ${result.score.toFixed(3)}`,
-        `semantic: ${result.vectorScore.toFixed(3)}`,
-        `keyword: ${result.bm25Score.toFixed(3)}`,
-      ].join(", ")
-
-      const date = result.date || (result.metadata?.date as string) || undefined
-      const dateStr = date ? ` | Date: ${date}` : ""
-
-      return `[Chunk ${i + 1}] (session: ${result.sessionId}, scores: ${scoreParts}${dateStr})
-${result.content}`
+      const date = result.documentDate ? ` [${result.documentDate}]` : ""
+      return `[Chunk ${i + 1}]${date}\n${result.text}`
     })
     .join("\n\n---\n\n")
 }

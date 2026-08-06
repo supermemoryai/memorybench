@@ -8,6 +8,7 @@ import type {
   QuestionTypeRegistry,
 } from "../../types/unified"
 import { logger } from "../../utils/logger"
+import { legacyBenchmarkProtocol } from "../../protocols/legacy"
 
 const DEFAULT_DATA_PATH = "./data/benchmarks/convomem"
 const HF_BASE_URL =
@@ -68,6 +69,8 @@ export const CONVOMEM_QUESTION_TYPES: QuestionTypeRegistry = {
 
 export class ConvoMemBenchmark implements Benchmark {
   name = "convomem"
+  scope = { displayName: "ConvoMem", includedTiers: [], coverage: "full" as const }
+  protocol = legacyBenchmarkProtocol
   private questions: UnifiedQuestion[] = []
   private sessionsMap: Map<string, UnifiedSession[]> = new Map()
   private dataPath: string = ""

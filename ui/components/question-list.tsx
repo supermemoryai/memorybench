@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from "react"
 import Link from "next/link"
-import { cn } from "@/lib/utils"
+import { cn, isEvaluationFailed, isEvaluationPassed } from "@/lib/utils"
 import { MultiSelect } from "./multi-select"
 import type { QuestionCheckpoint, QuestionTypeRegistry } from "@/lib/api"
 
@@ -33,14 +33,14 @@ export function QuestionList({ runId, questions, questionTypeRegistry }: Questio
 
   // Count failures
   const failureCount = useMemo(() => {
-    return questions.filter((q) => q.phases.evaluate.label === "incorrect").length
+    return questions.filter((q) => isEvaluationFailed(q.phases.evaluate)).length
   }, [questions])
 
   // Filter questions
   const filtered = useMemo(() => {
     return questions.filter((q) => {
       // Failures filter
-      if (showFailuresOnly && q.phases.evaluate.label !== "incorrect") {
+      if (showFailuresOnly && !isEvaluationFailed(q.phases.evaluate)) {
         return false
       }
 
@@ -166,7 +166,7 @@ export function QuestionList({ runId, questions, questionTypeRegistry }: Questio
       ) : (
         <div className="border border-border rounded overflow-hidden">
           {filtered.map((q, idx) => {
-            const isCorrect = q.phases.evaluate.label === "correct"
+            const isCorrect = isEvaluationPassed(q.phases.evaluate)
             const isExpanded = expanded === q.questionId
             const isLast = idx === filtered.length - 1
 

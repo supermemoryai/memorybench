@@ -4,15 +4,17 @@ import { useState, useEffect } from "react"
 import Link from "next/link"
 import { useParams } from "next/navigation"
 import { Highlight, themes } from "prism-react-renderer"
-import { getQuestion } from "@/lib/api"
-import { cn } from "@/lib/utils"
+import { getQuestion, type QuestionCheckpoint } from "@/lib/api"
+import { cn, isEvaluationPassed } from "@/lib/utils"
 
 export default function QuestionDetailPage() {
   const params = useParams()
   const runId = decodeURIComponent(params.runId as string)
   const questionId = decodeURIComponent(params.questionId as string)
 
-  const [question, setQuestion] = useState<any>(null)
+  const [question, setQuestion] = useState<
+    (QuestionCheckpoint & { searchResultsFile?: { results?: any[] } }) | null
+  >(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -51,10 +53,25 @@ export default function QuestionDetailPage() {
     )
   }
 
-  const isCorrect = question.phases?.evaluate?.label === "correct"
+  const isCorrect = isEvaluationPassed(question.phases?.evaluate)
   const searchResults =
     question.searchResultsFile?.results || question.phases?.search?.results || []
-  const containerTag = question.containerTag || ""
+  const searchPhase = question.phases?.search
+  const answerPhase = question.phases?.answer
+  const retrievalPlan = searchPhase?.retrievalPlan
+  const requestedTopK = retrievalPlan?.requestedTopK ?? searchPhase?.requestedCount
+  const rawReturnedCount = searchPhase?.rawReturnedCount ?? searchPhase?.returnedCount
+  const normalizedCount = searchPhase?.normalizedCount ?? searchResults.length
+  const answerCutoff = retrievalPlan?.answerCutoff ?? searchPhase?.answerCutoff
+  const answerEvidenceCount = searchPhase?.answerEvidenceCount ?? answerPhase?.evidenceCount
+  const containerTag = question.build?.containerTag || question.containerTag || ""
+  const evaluatePhase = question.phases?.evaluate
+  const protocolEvaluation = evaluatePhase?.evaluation
+  const primaryScore =
+    protocolEvaluation?.primaryScore ?? evaluatePhase?.primaryScore ?? evaluatePhase?.score
+  const evaluationMetrics = protocolEvaluation?.metrics ?? evaluatePhase?.metrics
+  const evaluationDetails = protocolEvaluation?.details ?? evaluatePhase?.details
+  const evaluationExplanation = protocolEvaluation?.explanation ?? evaluatePhase?.explanation
 
   const copyContainerTag = () => {
     navigator.clipboard.writeText(containerTag)
@@ -182,12 +199,109 @@ export default function QuestionDetailPage() {
       </div>
 
       {/* Evaluation */}
-      {question.phases?.evaluate?.explanation && (
+      {(primaryScore != null ||
+        evaluationExplanation ||
+        evaluationMetrics ||
+        evaluationDetails) && (
         <div className="card mb-4 overflow-hidden">
-          <h3 className="text-xs text-text-muted uppercase tracking-wide mb-2">
-            Evaluation Explanation
+          <div className="flex items-start justify-between gap-4 mb-3">
+            <h3 className="text-xs text-text-muted uppercase tracking-wide">Evaluation</h3>
+            {primaryScore != null && (
+              <div className="text-right">
+                <div className="text-lg font-mono text-text-primary">{primaryScore.toFixed(4)}</div>
+                <div className="text-[10px] text-text-muted uppercase">primary score</div>
+              </div>
+            )}
+          </div>
+
+          {evaluationMetrics && Object.keys(evaluationMetrics).length > 0 && (
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-2 mb-4">
+              {Object.entries(evaluationMetrics).map(([metric, value]) => (
+                <div key={metric} className="bg-bg-primary border border-border rounded p-2">
+                  <div className="text-[10px] text-text-muted uppercase break-words">{metric}</div>
+                  <div className="text-sm font-mono text-text-primary">
+                    {Number.isFinite(value) ? value.toFixed(4) : String(value)}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {evaluationExplanation && (
+            <div className="mb-4">
+              <h4 className="text-xs text-text-muted uppercase tracking-wide mb-2">Explanation</h4>
+              <p className="text-text-secondary break-words">{evaluationExplanation}</p>
+            </div>
+          )}
+
+          {evaluationDetails && Object.keys(evaluationDetails).length > 0 && (
+            <div>
+              <h4 className="text-xs text-text-muted uppercase tracking-wide mb-2">
+                Protocol details
+              </h4>
+              <Highlight
+                theme={themes.oneDark}
+                code={JSON.stringify(evaluationDetails, null, 2)}
+                language="json"
+              >
+                {({ style, tokens, getLineProps, getTokenProps }) => (
+                  <pre
+                    className="p-3 overflow-x-auto text-sm max-h-[360px] overflow-y-auto rounded border border-border"
+                    style={{ ...style, background: "#0d0d0d", margin: 0 }}
+                  >
+                    {tokens.map((line, i) => (
+                      <div key={i} {...getLineProps({ line })}>
+                        {line.map((token, key) => (
+                          <span key={key} {...getTokenProps({ token })} />
+                        ))}
+                      </div>
+                    ))}
+                  </pre>
+                )}
+              </Highlight>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Retrieval contract */}
+      {(requestedTopK != null || rawReturnedCount != null || searchResults.length > 0) && (
+        <div className="card mb-4 overflow-hidden">
+          <h3 className="text-xs text-text-muted uppercase tracking-wide mb-3">
+            Retrieval contract
           </h3>
-          <p className="text-text-secondary break-words">{question.phases.evaluate.explanation}</p>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+            <RetrievalValue label="configured top-k" value={requestedTopK} />
+            <RetrievalValue
+              label="provider request"
+              value={
+                searchPhase?.providerRequests?.reduce((sum, request) => sum + request.limit, 0) ??
+                searchPhase?.requestedCount
+              }
+            />
+            <RetrievalValue label="raw returned" value={rawReturnedCount} />
+            <RetrievalValue label="normalized" value={normalizedCount} />
+            <RetrievalValue label="dropped" value={searchPhase?.droppedCount ?? 0} />
+            <RetrievalValue label="answer cutoff" value={answerCutoff} />
+            <RetrievalValue label="answer evidence" value={answerEvidenceCount} />
+            <RetrievalValue label="context tokens" value={answerPhase?.contextTokens} />
+          </div>
+          {(retrievalPlan?.searchMode || retrievalPlan?.threshold != null) && (
+            <p className="text-xs text-text-secondary mt-3">
+              {retrievalPlan.searchMode ? `mode ${retrievalPlan.searchMode}` : "default mode"}
+              {retrievalPlan.threshold != null ? ` · threshold ${retrievalPlan.threshold}` : ""}
+            </p>
+          )}
+          {searchPhase?.providerRequests && searchPhase.providerRequests.length > 0 && (
+            <div className="mt-3">
+              <h4 className="text-[10px] text-text-muted uppercase tracking-wide mb-1">
+                Provider requests
+              </h4>
+              <pre className="p-3 overflow-x-auto text-xs rounded border border-border bg-[#0d0d0d] text-text-secondary">
+                {JSON.stringify(searchPhase.providerRequests, null, 2)}
+              </pre>
+            </div>
+          )}
         </div>
       )}
 
@@ -238,6 +352,15 @@ export default function QuestionDetailPage() {
           </div>
         )}
       </div>
+    </div>
+  )
+}
+
+function RetrievalValue({ label, value }: { label: string; value?: number }) {
+  return (
+    <div className="bg-bg-primary border border-border rounded p-2">
+      <div className="text-[10px] text-text-muted uppercase">{label}</div>
+      <div className="text-sm font-mono text-text-primary">{value ?? "—"}</div>
     </div>
   )
 }

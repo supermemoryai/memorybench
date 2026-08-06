@@ -70,5 +70,10 @@ export async function searchCommand(args: string[]): Promise<void> {
     provider: parsed.provider as ProviderName,
     benchmark: parsed.benchmark as BenchmarkName,
     runId: parsed.runId,
+    judgeModel: checkpoint.judge,
+    answeringModel: checkpoint.answeringModel,
+    dataPath: checkpoint.dataPath,
+    datasetRevision: checkpoint.datasetRevision,
+    retrievalTopK: checkpoint.retrievalTopK,
   })
 }

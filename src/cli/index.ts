@@ -7,6 +7,7 @@ import { statusCommand } from "./commands/status"
 import { listQuestionsCommand } from "./commands/list-questions"
 import { showFailuresCommand } from "./commands/show-failures"
 import { serveCommand } from "./commands/serve"
+import { beamCommand } from "./commands/beam"
 import { getAvailableProviders } from "../providers"
 import { getAvailableBenchmarks } from "../benchmarks"
 import { listModelsByProvider, MODEL_ALIASES, DEFAULT_ANSWERING_MODEL } from "../utils/models"
@@ -27,6 +28,7 @@ Commands:
   show-failures   Show failed questions from a run with full debugging data
   status          Check run status
   serve           Start the web UI server
+  beam prepare    Download, convert, hash, and validate pinned BEAM 1M/10M data
   help            Show help (use 'help providers', 'help models', 'help benchmarks' for details)
 
 Examples:
@@ -44,6 +46,9 @@ Options:
   -r, --run-id           Run identifier
   -m, --answering-model  Answering model (default: ${DEFAULT_ANSWERING_MODEL})
   -q, --question-id      Question ID (for test command)
+  --evaluation-profile  Experimental BEAM profile (mem0-nugget)
+  --answer-cutoff        Retrieved evidence exposed to the answer model
+  --source-run           Reuse validated completed ingestion/indexing builds
   --force                Clear checkpoint and start fresh
 
 Run 'bun run src/index.ts help <topic>' for more details:
@@ -151,9 +156,11 @@ Available benchmark datasets for evaluation:
                  Tests: user facts, assistant facts, preferences, implicit connections
                  Source: HuggingFace Salesforce/ConvoMem (downloaded on first use)
 
-  beam           BEAM - Beyond a Million Tokens benchmark
+  beam-1m / beam-10m / beam-1m-10m
+                 BEAM 1M/10M - intentional public-tier subset
                  Tests: abstention, contradiction, event ordering, extraction, instructions, knowledge update, multi-session, preferences, summarization, temporal
-                 Source: HuggingFace Mohammadta/BEAM (downloaded on first use)
+                 Source: pinned Hugging Face revisions; prepare explicitly with:
+                   bun run src/index.ts beam prepare --tiers 1M,10M
                  Scales: beam-1m (700 q / 35 chats), beam-10m (200 q / 10 chats)
 
 Usage:
@@ -162,6 +169,7 @@ Usage:
   -b convomem      Run ConvoMem benchmark
   -b beam-1m       Run BEAM 1M-token tier
   -b beam-10m      Run BEAM 10M-token tier
+  -b beam-1m-10m   Run both supported tiers (reported separately)
 `)
 }
 
@@ -196,6 +204,9 @@ export async function cli(args: string[]): Promise<void> {
       break
     case "serve":
       await serveCommand(commandArgs)
+      break
+    case "beam":
+      await beamCommand(commandArgs)
       break
     case "help":
     case "--help":

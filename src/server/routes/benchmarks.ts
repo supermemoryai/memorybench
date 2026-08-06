@@ -28,11 +28,16 @@ export async function handleBenchmarksRoutes(req: Request, url: URL): Promise<Re
   if (method === "GET" && pathname === "/api/benchmarks") {
     const benchmarks = getAvailableBenchmarks()
     return json({
-      benchmarks: benchmarks.map((name) => ({
-        name,
-        displayName: getBenchmarkDisplayName(name),
-        description: getBenchmarkDescription(name),
-      })),
+      benchmarks: benchmarks.map((name) => {
+        const benchmark = createBenchmark(name)
+        return {
+          name,
+          displayName: getBenchmarkDisplayName(name),
+          description: getBenchmarkDescription(name),
+          scope: benchmark.scope,
+          requiredJudge: benchmark.protocol.requiredJudge,
+        }
+      }),
     })
   }
 
@@ -85,9 +90,22 @@ export async function handleBenchmarksRoutes(req: Request, url: URL): Promise<Re
   if (method === "GET" && questionsMatch) {
     const benchmarkName = questionsMatch[1]
 
+    if (!getAvailableBenchmarks().includes(benchmarkName as any)) {
+      return json({ error: `Benchmark not found: ${benchmarkName}` }, 404)
+    }
+
     try {
       const benchmark = createBenchmark(benchmarkName as any)
-      await benchmark.load()
+      const retrievalTopKValue = url.searchParams.get("retrievalTopK")
+      const retrievalTopK = retrievalTopKValue ? Number(retrievalTopKValue) : undefined
+      if (retrievalTopKValue && !Number.isInteger(retrievalTopK)) {
+        return json({ error: "retrievalTopK must be an integer" }, 400)
+      }
+      await benchmark.load({
+        dataPath: url.searchParams.get("dataPath") || undefined,
+        datasetRevision: url.searchParams.get("datasetRevision") || undefined,
+        retrievalTopK,
+      })
       const questions = benchmark.getQuestions()
 
       // Support pagination
@@ -108,6 +126,9 @@ export async function handleBenchmarksRoutes(req: Request, url: URL): Promise<Re
       const questionTypes = Object.keys(questionTypeRegistry)
 
       return json({
+        benchmark: benchmark.name,
+        benchmarkScope: benchmark.scope,
+        datasetIdentity: benchmark.getDatasetIdentity?.(),
         questions: paged.map((q) => ({
           questionId: q.questionId,
           question: q.question,
@@ -123,8 +144,11 @@ export async function handleBenchmarksRoutes(req: Request, url: URL): Promise<Re
           totalPages: Math.ceil(total / limit),
         },
       })
-    } catch (e) {
-      return json({ error: `Benchmark not found: ${benchmarkName}` }, 404)
+    } catch (error) {
+      return json(
+        { error: error instanceof Error ? error.message : `Failed to load ${benchmarkName}` },
+        400
+      )
     }
   }
 
@@ -163,6 +187,9 @@ function getBenchmarkDisplayName(name: string): string {
     locomo: "LoCoMo",
     longmemeval: "LongMemEval",
     convomem: "ConvoMem",
+    "beam-1m": "BEAM 1M",
+    "beam-10m": "BEAM 10M",
+    "beam-1m-10m": "BEAM 1M/10M",
   }
   return names[name] || name
 }
@@ -173,6 +200,9 @@ function getBenchmarkDescription(name: string): string {
     longmemeval:
       "Long-term memory evaluation - Single/multi-session, temporal reasoning, knowledge update",
     convomem: "Conversational memory - User facts, preferences, implicit connections",
+    "beam-1m": "BEAM public 1M tier (35 chats / 700 questions)",
+    "beam-10m": "BEAM public 10M tier (10 chats / 200 questions)",
+    "beam-1m-10m": "BEAM public 1M and 10M tiers with explicit cross-tier aggregation",
   }
   return descriptions[name] || ""
 }

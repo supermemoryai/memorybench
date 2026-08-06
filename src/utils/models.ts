@@ -1,3 +1,5 @@
+import type { AnsweringRuntimeIdentity } from "../types/model"
+
 export interface ModelConfig {
   id: string
   provider: "openai" | "anthropic" | "google"
@@ -320,6 +322,22 @@ export const MODEL_ALIASES = MODEL_CONFIGS
 
 export function resolveModel(alias: string): ModelConfig {
   return getModelConfig(alias)
+}
+
+/** Immutable effective defaults used by the generic answering runtime. */
+export function resolveAnsweringRuntimeIdentity(alias: string): AnsweringRuntimeIdentity {
+  const resolvedAlias = alias || DEFAULT_ANSWERING_MODEL
+  const model = getModelConfig(resolvedAlias)
+  return {
+    schemaVersion: 1,
+    transport: "ai-sdk-generate-text-v1",
+    modelAlias: resolvedAlias,
+    provider: model.provider,
+    modelId: model.id,
+    supportsTemperature: model.supportsTemperature,
+    effectiveDefaultTemperature: model.supportsTemperature ? model.defaultTemperature : null,
+    effectiveDefaultMaxOutputTokens: model.defaultMaxTokens,
+  }
 }
 
 export function getModelId(alias: string): string {

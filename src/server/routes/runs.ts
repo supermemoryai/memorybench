@@ -1,19 +1,52 @@
 import { existsSync, readFileSync, readdirSync } from "fs"
 import { join } from "path"
-import { CheckpointManager } from "../../orchestrator/checkpoint"
-import { orchestrator } from "../../orchestrator"
+import { assertCopyPhaseOverrides, CheckpointManager } from "../../orchestrator/checkpoint"
+import {
+  assertResumeIdentity,
+  orchestrator,
+  resolveEffectiveRetrievalTopK,
+} from "../../orchestrator"
+import { assertResumeBuilds, prepareValidatedBuildPlans } from "../../orchestrator/builds"
 import { wsManager } from "../index"
 import { activeRuns, startRun, endRun, requestStop, isRunActive, getRunState } from "../runState"
 import { createBenchmark } from "../../benchmarks"
+import { createProvider } from "../../providers"
+import { fingerprintProviderPrompts } from "../../providers/prompt-identity"
 import type { ProviderName } from "../../types/provider"
 import type { BenchmarkName } from "../../types/benchmark"
-import type { PhaseId, SamplingConfig } from "../../types/checkpoint"
+import type { PhaseId, RunCheckpoint, SamplingConfig } from "../../types/checkpoint"
 import type { ConcurrencyConfig } from "../../types/concurrency"
 import { getPhasesFromPhase, PHASE_ORDER } from "../../types/checkpoint"
+import { resolveAnsweringRuntimeIdentity, resolveModel } from "../../utils/models"
+import { stableSha256 } from "../../utils/stable"
+import { getRunListIdentity } from "../run-identity"
+import {
+  canonicalizeSelectedQuestionIds,
+  fingerprintSelectedBenchmarkInput,
+} from "../../orchestrator/input-identity"
+import { getProviderConfig } from "../../utils/config"
 
 const checkpointManager = new CheckpointManager()
 
 const benchmarkRegistryCache: Record<string, any> = {}
+
+function getEvaluationPassState(value: any): boolean | undefined {
+  const protocolEvaluation = value?.evaluation
+  if (typeof protocolEvaluation?.passed === "boolean") return protocolEvaluation.passed
+  if (typeof value?.passed === "boolean") return value.passed
+
+  for (const label of [protocolEvaluation?.label, value?.label]) {
+    if (typeof label !== "string") continue
+    const normalized = label.toLowerCase()
+    if (normalized === "pass" || normalized === "correct") return true
+    if (normalized === "fail" || normalized === "incorrect" || normalized === "wrong") {
+      return false
+    }
+  }
+
+  const legacyScore = value?.score ?? protocolEvaluation?.primaryScore
+  return typeof legacyScore === "number" ? legacyScore === 1 : undefined
+}
 
 function getQuestionTypeRegistry(benchmarkName: string) {
   if (!benchmarkRegistryCache[benchmarkName]) {
@@ -28,6 +61,108 @@ function json(data: unknown, status = 200): Response {
     status,
     headers: { "Content-Type": "application/json" },
   })
+}
+
+async function validateCheckpointCopy(input: {
+  source: RunCheckpoint
+  provider: ProviderName
+  benchmark: BenchmarkName
+  judgeModel: string
+  answeringModel: string
+  dataPath?: string
+  datasetRevision?: string
+  retrievalTopK?: number
+  fromPhase: PhaseId
+}): Promise<void> {
+  const dataPath = input.dataPath ?? input.source.dataPath
+  const datasetRevision = input.datasetRevision ?? input.source.datasetRevision
+  const configuredRetrievalTopK = input.retrievalTopK ?? input.source.retrievalTopK
+  const benchmark = createBenchmark(input.benchmark)
+
+  await benchmark.load({
+    dataPath,
+    datasetRevision,
+    retrievalTopK: configuredRetrievalTopK,
+  })
+  const resolvedJudge = resolveModel(input.judgeModel)
+  const requiredJudge = benchmark.protocol.requiredJudge
+  if (
+    requiredJudge &&
+    (resolvedJudge.provider !== requiredJudge.provider ||
+      resolvedJudge.id !== requiredJudge.modelId)
+  ) {
+    throw new Error(
+      `Protocol ${benchmark.protocol.identity.id} requires judge ${requiredJudge.provider}/${requiredJudge.modelId}; received ${resolvedJudge.provider}/${resolvedJudge.id}`
+    )
+  }
+
+  const allQuestions = benchmark.getQuestions()
+  for (const question of allQuestions) benchmark.protocol.validateQuestion(question)
+  if (!input.source.targetQuestionIds?.length) {
+    throw new Error(
+      `Source run ${input.source.runId} does not record its selected question IDs; start a new run`
+    )
+  }
+  const targetQuestionIds = canonicalizeSelectedQuestionIds(
+    allQuestions,
+    input.source.targetQuestionIds
+  )
+  const questionById = new Map(allQuestions.map((question) => [question.questionId, question]))
+
+  const selectedQuestions = targetQuestionIds.map((questionId) => questionById.get(questionId)!)
+  const retrievalTopK = resolveEffectiveRetrievalTopK(
+    benchmark.protocol,
+    selectedQuestions,
+    configuredRetrievalTopK
+  )
+  const benchmarkInputFingerprint = fingerprintSelectedBenchmarkInput(benchmark, selectedQuestions)
+  const provider = createProvider(input.provider)
+  const providerConfig = getProviderConfig(input.provider)
+  const providerPromptFingerprint = fingerprintProviderPrompts(provider.prompts)
+  const providerIngestionConfigFingerprint = provider.getIngestionConfigFingerprint(providerConfig)
+  assertCopyPhaseOverrides(input.source, input.fromPhase, {
+    judge: input.judgeModel,
+    answeringModel: input.answeringModel,
+  })
+  const buildPlans = prepareValidatedBuildPlans({
+    benchmark,
+    questions: selectedQuestions,
+    provider: provider.name,
+    providerAdapterVersion: provider.adapterVersion,
+    providerPromptFingerprint,
+    providerIngestionConfigFingerprint,
+    dataSourceRunId: input.source.dataSourceRunId || input.source.runId,
+  })
+
+  const copyIdentity = structuredClone(input.source)
+  copyIdentity.judge = input.judgeModel
+  copyIdentity.answeringModel = input.answeringModel
+  const rerunsAnswer = PHASE_ORDER.indexOf(input.fromPhase) <= PHASE_ORDER.indexOf("answer")
+  const answeringRuntimeIdentity = rerunsAnswer
+    ? resolveAnsweringRuntimeIdentity(input.answeringModel)
+    : input.source.answeringRuntimeIdentity
+  if (!answeringRuntimeIdentity) {
+    throw new Error(
+      `Cannot copy ${input.source.runId} from ${input.fromPhase}; source answer runtime identity is missing`
+    )
+  }
+  copyIdentity.answeringRuntimeIdentity = answeringRuntimeIdentity
+  assertResumeIdentity(copyIdentity, {
+    provider: provider.name,
+    providerAdapterVersion: provider.adapterVersion,
+    providerPromptFingerprint,
+    benchmark: benchmark.name,
+    benchmarkScope: benchmark.scope,
+    datasetIdentity: benchmark.getDatasetIdentity?.(),
+    benchmarkInputFingerprint,
+    selectedQuestionIdsDigest: stableSha256(targetQuestionIds),
+    protocolIdentity: benchmark.protocol.identity,
+    retrievalTopK,
+    judge: input.judgeModel,
+    answeringModel: input.answeringModel,
+    answeringRuntimeIdentity,
+  })
+  assertResumeBuilds(input.source, buildPlans)
 }
 
 export async function handleRunsRoutes(req: Request, url: URL): Promise<Response | null> {
@@ -49,7 +184,7 @@ export async function handleRunsRoutes(req: Request, url: URL): Promise<Response
           (q: any) => q.phases?.evaluate?.status === "completed"
         )
         const correctCount = evaluatedQuestions.filter(
-          (q: any) => q.phases?.evaluate?.score === 1
+          (q: any) => getEvaluationPassState(q.phases?.evaluate) === true
         ).length
         const accuracy =
           evaluatedQuestions.length > 0 ? correctCount / evaluatedQuestions.length : null
@@ -58,6 +193,7 @@ export async function handleRunsRoutes(req: Request, url: URL): Promise<Response
           runId,
           provider: checkpoint.provider,
           benchmark: checkpoint.benchmark,
+          ...getRunListIdentity(checkpoint),
           judge: checkpoint.judge,
           answeringModel: checkpoint.answeringModel,
           createdAt: checkpoint.createdAt,
@@ -65,6 +201,9 @@ export async function handleRunsRoutes(req: Request, url: URL): Promise<Response
           status: getRunStatus(checkpoint, summary),
           summary,
           accuracy,
+          dataPath: checkpoint.dataPath,
+          datasetRevision: checkpoint.datasetRevision,
+          retrievalTopK: checkpoint.retrievalTopK,
         }
       })
       .filter(Boolean)
@@ -165,7 +304,7 @@ export async function handleRunsRoutes(req: Request, url: URL): Promise<Response
     }
 
     // Also load the search results file if it exists
-    const resultsPath = join(checkpointManager.getResultsDir(runId), `${questionId}.json`)
+    const resultsPath = checkpointManager.getQuestionResultsPath(runId, questionId)
     let searchResults = null
     if (existsSync(resultsPath)) {
       searchResults = JSON.parse(readFileSync(resultsPath, "utf8"))
@@ -173,6 +312,10 @@ export async function handleRunsRoutes(req: Request, url: URL): Promise<Response
 
     return json({
       ...question,
+      build: question.buildId ? checkpoint.builds?.[question.buildId] : undefined,
+      containerTag:
+        (question.buildId ? checkpoint.builds?.[question.buildId]?.containerTag : undefined) ??
+        (question as unknown as { containerTag?: string }).containerTag,
       searchResultsFile: searchResults,
     })
   }
@@ -194,6 +337,9 @@ export async function handleRunsRoutes(req: Request, url: URL): Promise<Response
         force,
         fromPhase,
         sourceRunId,
+        dataPath,
+        datasetRevision,
+        retrievalTopK,
       } = body
       console.log("[API] Extracted sampling:", sampling)
       console.log("[API] Extracted concurrency:", concurrency)
@@ -256,10 +402,28 @@ export async function handleRunsRoutes(req: Request, url: URL): Promise<Response
           )
         }
 
+        if (!fromPhase) {
+          return json({ error: "fromPhase is required when copying a source run" }, 400)
+        }
+
         // Check if new runId already exists
         if (checkpointManager.exists(runId)) {
           return json({ error: `Run ${runId} already exists` }, 409)
         }
+
+        // Validate the complete dataset, protocol, provider adapter and every
+        // shared haystack before creating the copied checkpoint or artifacts.
+        await validateCheckpointCopy({
+          source: sourceCheckpoint,
+          provider: provider as ProviderName,
+          benchmark: benchmark as BenchmarkName,
+          judgeModel,
+          answeringModel: answeringModel || sourceCheckpoint.answeringModel,
+          dataPath,
+          datasetRevision,
+          retrievalTopK,
+          fromPhase: fromPhase as PhaseId,
+        })
 
         // Copy checkpoint with new runId, resetting phases from fromPhase onwards
         checkpointManager.copyCheckpoint(sourceRunId, runId, fromPhase as PhaseId, {
@@ -271,7 +435,15 @@ export async function handleRunsRoutes(req: Request, url: URL): Promise<Response
 
       startRun(runId, benchmark)
 
-      runBenchmark({
+      let preflightResolved = false
+      let resolvePreflight!: () => void
+      let rejectPreflight!: (error: Error) => void
+      const preflight = new Promise<void>((resolve, reject) => {
+        resolvePreflight = resolve
+        rejectPreflight = reject
+      })
+
+      void runBenchmark({
         provider: provider as ProviderName,
         benchmark: benchmark as BenchmarkName,
         runId,
@@ -282,9 +454,23 @@ export async function handleRunsRoutes(req: Request, url: URL): Promise<Response
         concurrency,
         force: sourceRunId ? false : force,
         fromPhase: fromPhase as PhaseId | undefined,
+        dataPath,
+        datasetRevision,
+        retrievalTopK,
+        onPreflightComplete: () => {
+          preflightResolved = true
+          resolvePreflight()
+        },
+        onFailure: (error) => {
+          if (!preflightResolved) rejectPreflight(error)
+        },
       }).finally(() => {
         endRun(runId)
       })
+
+      // Do not return a successful start response until all fail-closed dataset,
+      // protocol, build-identity, and resume checks have passed and a checkpoint exists.
+      await preflight
 
       return json({ message: "Run started", runId })
     } catch (e) {
@@ -330,20 +516,31 @@ function getRunStatus(checkpoint: any, summary: any): string {
     return "failed"
   }
 
-  // Check if any question has a failed phase
   const questions = Object.values(checkpoint.questions || {}) as any[]
-  const hasFailed = questions.some((q: any) => {
+  const builds = Object.values(checkpoint.builds || {}) as any[]
+  const usesSharedBuilds = builds.length > 0 || questions.some((question) => question.buildId)
+
+  // Build phases are owned once per shared haystack, not by each question.
+  const hasFailedBuild = builds.some(
+    (build) => build.ingest?.status === "failed" || build.indexing?.status === "failed"
+  )
+
+  // Search, answer, and evaluation remain question-owned.
+  const hasMissingReferencedBuild = questions.some(
+    (question) => question.buildId && !checkpoint.builds?.[question.buildId]
+  )
+  const hasFailedQuestion = questions.some((q: any) => {
     const phases = q.phases || {}
     return (
-      phases.ingest?.status === "failed" ||
-      phases.indexing?.status === "failed" ||
+      (!usesSharedBuilds &&
+        (phases.ingest?.status === "failed" || phases.indexing?.status === "failed")) ||
       phases.search?.status === "failed" ||
       phases.answer?.status === "failed" ||
       phases.evaluate?.status === "failed"
     )
   })
 
-  if (hasFailed) {
+  if (hasFailedBuild || hasMissingReferencedBuild || hasFailedQuestion) {
     return "failed"
   }
 
@@ -377,6 +574,11 @@ async function runBenchmark(options: {
   concurrency?: ConcurrencyConfig
   force?: boolean
   fromPhase?: PhaseId
+  dataPath?: string
+  datasetRevision?: string
+  retrievalTopK?: number
+  onPreflightComplete?: () => void
+  onFailure?: (error: Error) => void
 }) {
   try {
     wsManager.broadcast({
@@ -399,6 +601,10 @@ async function runBenchmark(options: {
       concurrency: options.concurrency,
       force: options.force,
       phases,
+      dataPath: options.dataPath,
+      datasetRevision: options.datasetRevision,
+      retrievalTopK: options.retrievalTopK,
+      onPreflightComplete: options.onPreflightComplete,
     })
 
     wsManager.broadcast({
@@ -406,13 +612,22 @@ async function runBenchmark(options: {
       runId: options.runId,
     })
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown error"
+    let message = error instanceof Error ? error.message : "Unknown error"
+    const normalizedError = error instanceof Error ? error : new Error(message)
+    options.onFailure?.(normalizedError)
     const wasStoppedByUser = message.includes("stopped by user")
 
     // Update checkpoint status to persist the failure/stopped state
-    const checkpoint = checkpointManager.load(options.runId)
-    if (checkpoint) {
-      checkpointManager.updateStatus(checkpoint, "failed")
+    try {
+      const checkpoint = checkpointManager.load(options.runId)
+      if (checkpoint) {
+        checkpointManager.updateStatus(checkpoint, "failed")
+        await checkpointManager.flush(options.runId)
+      }
+    } catch (persistenceError) {
+      const persistenceMessage =
+        persistenceError instanceof Error ? persistenceError.message : String(persistenceError)
+      message = `${message}; failed to persist terminal run state: ${persistenceMessage}`
     }
 
     wsManager.broadcast({

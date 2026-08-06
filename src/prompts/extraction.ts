@@ -1,9 +1,12 @@
 import { createOpenAI } from "@ai-sdk/openai"
 import { generateText } from "ai"
 import type { UnifiedSession } from "../types/unified"
+import { sha256Text, stableSha256 } from "../utils/stable"
 
 /** Model used for memory extraction (fast, cheap, sufficient for extraction) */
 const EXTRACTION_MODEL = "gpt-4o-mini"
+const EXTRACTION_MAX_OUTPUT_TOKENS = 2000
+const EXTRACTION_TEMPERATURE = 0
 
 /**
  * Build an extraction prompt that instructs the LLM to extract structured
@@ -64,6 +67,17 @@ Rules:
 - Resolve relative date references ("yesterday", "last week") to absolute dates using the conversation date when possible`
 }
 
+/** Provider build identity for the shared filesystem/RAG extraction stage. */
+export function getMemoryExtractionConfigFingerprint(): string {
+  return stableSha256({
+    schemaVersion: 1,
+    model: EXTRACTION_MODEL,
+    maxOutputTokens: EXTRACTION_MAX_OUTPUT_TOKENS,
+    temperature: EXTRACTION_TEMPERATURE,
+    promptBuilderSourceSha256: sha256Text(Function.prototype.toString.call(buildExtractionPrompt)),
+  })
+}
+
 /**
  * Call LLM to extract structured memories from a conversation session.
  * Returns MEMORY.md-style markdown with categorized facts, events, preferences.
@@ -77,8 +91,8 @@ export async function extractMemories(
   const params: Record<string, unknown> = {
     model: openai(EXTRACTION_MODEL),
     prompt,
-    maxTokens: 2000,
-    temperature: 0,
+    maxTokens: EXTRACTION_MAX_OUTPUT_TOKENS,
+    temperature: EXTRACTION_TEMPERATURE,
   }
 
   const { text } = await generateText(params as Parameters<typeof generateText>[0])
