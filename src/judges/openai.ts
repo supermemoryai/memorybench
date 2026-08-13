@@ -27,18 +27,16 @@ export class OpenAIJudge implements Judge {
 
     const prompt = buildJudgePrompt(input)
 
-    const params: Record<string, unknown> = {
+    // No `as Parameters<typeof generateText>[0]` cast here: it suppressed excess-property
+    // checking, which is why the v4 `maxTokens` name survived the AI SDK v5 upgrade unnoticed.
+    const { text } = await generateText({
       model: this.client(this.modelConfig.id),
       prompt,
-    }
-
-    if (this.modelConfig.supportsTemperature) {
-      params.temperature = this.modelConfig.defaultTemperature
-    }
-
-    params.maxTokens = this.modelConfig.defaultMaxTokens
-
-    const { text } = await generateText(params as Parameters<typeof generateText>[0])
+      maxOutputTokens: this.modelConfig.defaultMaxTokens,
+      ...(this.modelConfig.supportsTemperature
+        ? { temperature: this.modelConfig.defaultTemperature }
+        : {}),
+    })
 
     return parseJudgeResponse(text)
   }

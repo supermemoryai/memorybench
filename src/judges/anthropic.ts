@@ -27,17 +27,14 @@ export class AnthropicJudge implements Judge {
 
     const prompt = buildJudgePrompt(input)
 
-    const params: Record<string, unknown> = {
+    const { text } = await generateText({
       model: this.client(this.modelConfig.id),
       prompt,
-      maxTokens: this.modelConfig.defaultMaxTokens,
-    }
-
-    if (this.modelConfig.supportsTemperature) {
-      params.temperature = this.modelConfig.defaultTemperature
-    }
-
-    const { text } = await generateText(params as Parameters<typeof generateText>[0])
+      maxOutputTokens: this.modelConfig.defaultMaxTokens,
+      ...(this.modelConfig.supportsTemperature
+        ? { temperature: this.modelConfig.defaultTemperature }
+        : {}),
+    })
 
     return parseJudgeResponse(text)
   }
