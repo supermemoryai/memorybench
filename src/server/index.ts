@@ -4,6 +4,7 @@ import { handleLeaderboardRoutes } from "./routes/leaderboard"
 import { handleCompareRoutes } from "./routes/compare"
 import { WebSocketManager } from "./websocket"
 import { logger } from "../utils/logger"
+import { UnsafeIdError } from "../utils/paths"
 import { join } from "path"
 import { Subprocess } from "bun"
 
@@ -14,10 +15,27 @@ export interface ServerOptions {
 
 let uiProcess: Subprocess | null = null
 
-const CORS_HEADERS = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization",
+// This API deletes runs and spends provider/judge credits, and it has no auth, so a
+// wildcard Access-Control-Allow-Origin would let any website the user happens to visit
+// drive it. The UI is served from a loopback port that Next.js picks at startup, so
+// allow any loopback origin and nothing else.
+const LOOPBACK_ORIGIN = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/
+
+function isAllowedOrigin(origin: string | null): boolean {
+  return !!origin && LOOPBACK_ORIGIN.test(origin)
+}
+
+function corsHeaders(origin: string | null): Record<string, string> {
+  const headers: Record<string, string> = {
+    "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization",
+    // The response now depends on the request origin, so it must not be cached across origins.
+    Vary: "Origin",
+  }
+  if (isAllowedOrigin(origin)) {
+    headers["Access-Control-Allow-Origin"] = origin!
+  }
+  return headers
 }
 
 export const wsManager = new WebSocketManager()
@@ -30,10 +48,23 @@ export async function startServer(options: ServerOptions): Promise<void> {
 
     async fetch(req, server) {
       const url = new URL(req.url)
+      const origin = req.headers.get("origin")
+      const CORS_HEADERS = corsHeaders(origin)
 
       // Handle CORS preflight
       if (req.method === "OPTIONS") {
         return new Response(null, { headers: CORS_HEADERS })
+      }
+
+      // Belt and braces: a disallowed origin gets no ACAO above, so the browser already
+      // blocks the response. Refusing the state-changing methods outright means the
+      // side effect never happens either. Non-browser clients (CLI, curl) send no
+      // Origin at all and are unaffected.
+      if (origin && !isAllowedOrigin(origin) && req.method !== "GET") {
+        return new Response(JSON.stringify({ error: "Cross-origin request rejected" }), {
+          status: 403,
+          headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
+        })
       }
 
       // WebSocket upgrade
@@ -82,8 +113,10 @@ export async function startServer(options: ServerOptions): Promise<void> {
         })
       } catch (error) {
         const message = error instanceof Error ? error.message : "Internal server error"
+        // A rejected run/comparison ID is bad input, not a server fault.
+        const status = error instanceof UnsafeIdError ? 400 : 500
         return new Response(JSON.stringify({ error: message }), {
-          status: 500,
+          status,
           headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
         })
       }

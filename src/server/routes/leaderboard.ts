@@ -4,7 +4,9 @@ import { join } from "path"
 import { db, schema } from "../db"
 import { CheckpointManager } from "../../orchestrator/checkpoint"
 import { createBenchmark } from "../../benchmarks"
+import { getAvailableProviders } from "../../providers"
 import type { BenchmarkName } from "../../types/benchmark"
+import type { ProviderName } from "../../types/provider"
 
 const checkpointManager = new CheckpointManager()
 
@@ -309,8 +311,17 @@ export async function handleLeaderboardRoutes(req: Request, url: URL): Promise<R
   return null
 }
 
+// checkpoint.provider is whatever POST /api/runs/start supplied: the checkpoint is written
+// before createProvider() ever validates the name, so a bogus value survives on disk and
+// reaches these joins. Only ever resolve names the provider registry actually knows.
+function resolveProviderDir(provider: string): string | null {
+  if (!getAvailableProviders().includes(provider as ProviderName)) return null
+  return join(process.cwd(), "src", "providers", provider)
+}
+
 function getProviderCode(provider: string): string {
-  const providerDir = join(process.cwd(), "src", "providers", provider)
+  const providerDir = resolveProviderDir(provider)
+  if (!providerDir) return `// Unknown provider: ${provider}`
   const indexPath = join(providerDir, "index.ts")
   const promptPath = join(providerDir, "prompt.ts")
   const promptsPath = join(providerDir, "prompts.ts")
@@ -341,7 +352,8 @@ function getProviderCode(provider: string): string {
 }
 
 function getProviderPrompts(provider: string): Record<string, string> | null {
-  const providerDir = join(process.cwd(), "src", "providers", provider)
+  const providerDir = resolveProviderDir(provider)
+  if (!providerDir) return null
   const prompts: Record<string, string> = {}
 
   // Check for dedicated prompt files
