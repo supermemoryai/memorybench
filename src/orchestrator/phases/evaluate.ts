@@ -62,6 +62,7 @@ export async function runEvaluatePhase(
             questionType: question.questionType,
             groundTruth: question.groundTruth,
             hypothesis,
+            isAbstention: question.isAbstention,
             providerPrompts: provider?.prompts,
           }),
           calculateRetrievalMetrics(

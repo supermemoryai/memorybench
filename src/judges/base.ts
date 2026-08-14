@@ -6,6 +6,17 @@ export function getJudgePrompt(questionType: string, providerPrompts?: ProviderP
   return getJudgePromptForType(questionType)
 }
 
+/**
+ * An abstention question is either flagged by the benchmark or identified by its type name.
+ * The flag is needed because LongMemEval keeps the original question type on its abstention
+ * entries and only marks them with an `_abs` question id suffix.
+ */
+function isAbstentionQuestion(input: JudgeInput): boolean {
+  if (input.isAbstention) return true
+  const type = input.questionType.toLowerCase()
+  return type.includes("abstention") || type.includes("adversarial")
+}
+
 export function buildJudgePrompt(input: JudgeInput): string {
   if (input.providerPrompts?.judgePrompt) {
     const prompts = input.providerPrompts.judgePrompt(
@@ -16,9 +27,14 @@ export function buildJudgePrompt(input: JudgeInput): string {
     return prompts[input.questionType] ?? prompts.default
   }
 
-  const systemPrompt = getJudgePromptForType(input.questionType)
+  const isAbstention = isAbstentionQuestion(input)
+  const systemPrompt = getJudgePromptForType(input.questionType, isAbstention)
   const isPreference = input.questionType.toLowerCase().includes("preference")
-  const groundTruthLabel = isPreference ? "Rubric" : "Ground Truth Answer"
+  const groundTruthLabel = isAbstention
+    ? "Explanation"
+    : isPreference
+      ? "Rubric"
+      : "Ground Truth Answer"
 
   return `${systemPrompt}
 
