@@ -113,6 +113,12 @@ export class LoCoMoBenchmark implements Benchmark {
   }
 
   private processData(): void {
+    // Reset first so `load()` is idempotent — the server caches benchmark
+    // instances, and a second `load()` would otherwise append a duplicate copy
+    // of every question.
+    this.questions = []
+    this.sessionsMap.clear()
+
     for (const item of this.data) {
       const sessions = this.extractSessions(item)
       const sessionIds = sessions.map((s) => s.sessionId)
