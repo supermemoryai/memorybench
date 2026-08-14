@@ -109,6 +109,12 @@ export interface SamplingConfig {
   sampleType?: SampleType
   perCategory?: number
   limit?: number
+  /**
+   * Seed for `sampleType: "random"`. Supply one to reproduce a previous
+   * selection; when omitted, a seed is generated and recorded here so the run
+   * stays auditable.
+   */
+  seed?: number
 }
 
 export interface RunCheckpoint {

@@ -17,6 +17,7 @@ interface CompareArgs {
   compareId?: string
   sample?: number
   sampleType?: SampleType
+  seed?: number
   limit?: number
   force?: boolean
 }
@@ -50,6 +51,13 @@ export function parseCompareArgs(args: string[]): CompareArgs | null {
         logger.error(`Invalid sample type: ${type}. Valid types: consecutive, random`)
         return null
       }
+    } else if (arg === "--seed") {
+      const seed = Number(args[++i])
+      if (!Number.isInteger(seed) || seed < 0) {
+        logger.error(`Invalid seed: ${seed}. Expected a non-negative integer.`)
+        return null
+      }
+      parsed.seed = seed
     } else if (arg === "-l" || arg === "--limit") {
       parsed.limit = parseInt(args[++i], 10)
     } else if (arg === "--force") {
@@ -83,6 +91,9 @@ export async function compareCommand(args: string[]): Promise<void> {
     console.log(`  -m, --answering-model Answering model (default: ${DEFAULT_ANSWERING_MODEL})`)
     console.log("  -s, --sample          Sample N questions per category")
     console.log("  --sample-type         Sample type: consecutive (default), random")
+    console.log(
+      "  --seed N              Seed for --sample-type random (logged and stored when omitted)"
+    )
     console.log("  -l, --limit           Limit total number of questions")
     console.log("  --compare-id          Compare ID (for resuming)")
     console.log("  --force               Clear existing comparison and start fresh")
@@ -122,6 +133,7 @@ export async function compareCommand(args: string[]): Promise<void> {
           mode: "sample",
           sampleType: parsed.sampleType || "consecutive",
           perCategory: parsed.sample,
+          seed: parsed.seed,
         }
       } else if (parsed.limit) {
         sampling = {
