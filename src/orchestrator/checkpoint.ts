@@ -27,6 +27,8 @@ const RUNS_DIR = "./data/runs"
 export class CheckpointManager {
   private basePath: string
   private saveLock = new Map<string, Promise<void>>()
+  /** Last save failure per run, recorded by save() and surfaced by flush(). */
+  private saveErrors = new Map<string, Error>()
 
   constructor(basePath: string = RUNS_DIR) {
     this.basePath = basePath
@@ -62,34 +64,52 @@ export class CheckpointManager {
   }
 
   save(checkpoint: RunCheckpoint): void {
-    const currentQueue = this.saveLock.get(checkpoint.runId) || Promise.resolve()
-    const nextQueue = currentQueue.then(() => this._performSave(checkpoint))
-    this.saveLock.set(checkpoint.runId, nextQueue)
+    const runId = checkpoint.runId
 
-    nextQueue.finally(() => {
-      if (this.saveLock.get(checkpoint.runId) === nextQueue) {
-        this.saveLock.delete(checkpoint.runId)
+    // Serialise here rather than at write time. The checkpoint object is mutated
+    // concurrently by in-flight tasks (updatePhase does Object.assign), so a queued
+    // save would otherwise persist whatever state existed when the write finally
+    // ran instead of the state that was current when save() was called.
+    checkpoint.updatedAt = new Date().toISOString()
+    const serialized = JSON.stringify(checkpoint, null, 2)
+
+    const currentQueue = this.saveLock.get(runId) || Promise.resolve()
+
+    // The stored promise always ends in a .catch, so it never rejects: a failed
+    // write can neither become an unhandled rejection nor stop the saves queued
+    // behind it from running.
+    const nextQueue = currentQueue
+      .then(() => this._performSave(runId, serialized))
+      .catch((e: unknown) => {
+        const error = e instanceof Error ? e : new Error(String(e))
+        this.saveErrors.set(runId, error)
+        logger.error(`Checkpoint save failed for ${runId}: ${error.message}`)
+      })
+
+    this.saveLock.set(runId, nextQueue)
+
+    void nextQueue.finally(() => {
+      if (this.saveLock.get(runId) === nextQueue) {
+        this.saveLock.delete(runId)
       }
     })
   }
 
-  private async _performSave(checkpoint: RunCheckpoint): Promise<void> {
-    const runPath = this.getRunPath(checkpoint.runId)
-    const path = this.getCheckpointPath(checkpoint.runId)
+  private async _performSave(runId: string, serialized: string): Promise<void> {
+    const runPath = this.getRunPath(runId)
+    const path = this.getCheckpointPath(runId)
     const tempPath = path + ".tmp"
 
     if (!existsSync(runPath)) {
       mkdirSync(runPath, { recursive: true })
     }
 
-    checkpoint.updatedAt = new Date().toISOString()
-
     let lastError: any
 
     // Windows often locks files briefly (EPERM/EBUSY), so we retry a few times
     for (let attempt = 0; attempt < 5; attempt++) {
       try {
-        writeFileSync(tempPath, JSON.stringify(checkpoint, null, 2))
+        writeFileSync(tempPath, serialized)
         renameSync(tempPath, path)
         return // Success
       } catch (e: any) {
@@ -109,12 +129,47 @@ export class CheckpointManager {
     throw lastError
   }
 
+  /**
+   * Wait for queued saves to settle.
+   *
+   * Throws if any save failed since the last flush. A failure means the on-disk
+   * checkpoint is stale, so the caller must not go on to record the run as
+   * durably persisted — but the error now names checkpoint persistence as the
+   * cause instead of arriving as an opaque rejection from an unrelated await.
+   */
   async flush(runId?: string): Promise<void> {
     if (runId) {
       await this.saveLock.get(runId)
-    } else {
-      await Promise.all(Array.from(this.saveLock.values()))
+      this.throwIfSaveFailed([runId])
+      return
     }
+
+    await Promise.all(Array.from(this.saveLock.values()))
+    this.throwIfSaveFailed(Array.from(this.saveErrors.keys()))
+  }
+
+  /** True if a save for this run has failed and not yet been reported by flush(). */
+  hasSaveError(runId: string): boolean {
+    return this.saveErrors.has(runId)
+  }
+
+  private throwIfSaveFailed(runIds: string[]): void {
+    const failures: string[] = []
+
+    for (const runId of runIds) {
+      const error = this.saveErrors.get(runId)
+      if (!error) continue
+      // Consume it, so a later flush reports new failures rather than this one again.
+      this.saveErrors.delete(runId)
+      failures.push(`${runId}: ${error.message}`)
+    }
+
+    if (failures.length === 0) return
+
+    throw new Error(
+      `Checkpoint could not be persisted (${failures.join("; ")}). ` +
+        `The on-disk state for the affected run(s) is stale.`
+    )
   }
 
   create(
@@ -169,6 +224,8 @@ export class CheckpointManager {
       rmSync(runPath, { recursive: true })
       logger.info(`Deleted run: ${runPath}`)
     }
+    // The run is gone; a stale write failure for it must not fail a later flush.
+    this.saveErrors.delete(runId)
   }
 
   updateStatus(checkpoint: RunCheckpoint, status: RunStatus): void {
