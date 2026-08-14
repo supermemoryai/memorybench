@@ -21,6 +21,18 @@ import { Tooltip } from "@/components/tooltip"
 
 const POLL_INTERVAL = 2000 // 2 seconds
 
+/**
+ * Retrieval columns, defined once so the header and body cannot drift apart.
+ *
+ * Recall, F1 and NDCG used to appear here. They were degenerate without ground-truth relevance
+ * counts — recall was identical to Hit@K by construction — so they are no longer reported (#67).
+ */
+const RETRIEVAL_COLUMNS = [
+  { key: "hitAtK", label: "Hit@K", format: (v: number) => `${(v * 100).toFixed(0)}%` },
+  { key: "precisionAtK", label: "Precision", format: (v: number) => `${(v * 100).toFixed(0)}%` },
+  { key: "mrr", label: "MRR", format: (v: number) => v.toFixed(2) },
+] as const
+
 export default function CompareDetailPage() {
   const params = useParams()
   const router = useRouter()
@@ -567,27 +579,17 @@ export default function CompareDetailPage() {
                 <table className="w-full text-sm table-fixed">
                   <thead>
                     <tr className="border-b border-border">
-                      <th className="w-[14.28%] text-left py-2 px-3 text-text-muted font-medium uppercase text-xs">
+                      <th className="w-1/4 text-left py-2 px-3 text-text-muted font-medium uppercase text-xs">
                         Provider
                       </th>
-                      <th className="w-[14.28%] text-right py-2 px-3 text-text-muted font-medium uppercase text-xs">
-                        Hit@K
-                      </th>
-                      <th className="w-[14.28%] text-right py-2 px-3 text-text-muted font-medium uppercase text-xs">
-                        Precision
-                      </th>
-                      <th className="w-[14.28%] text-right py-2 px-3 text-text-muted font-medium uppercase text-xs">
-                        Recall
-                      </th>
-                      <th className="w-[14.28%] text-right py-2 px-3 text-text-muted font-medium uppercase text-xs">
-                        F1
-                      </th>
-                      <th className="w-[14.28%] text-right py-2 px-3 text-text-muted font-medium uppercase text-xs">
-                        MRR
-                      </th>
-                      <th className="w-[14.28%] text-right py-2 px-3 text-text-muted font-medium uppercase text-xs">
-                        NDCG
-                      </th>
+                      {RETRIEVAL_COLUMNS.map((c) => (
+                        <th
+                          key={c.key}
+                          className="w-1/4 text-right py-2 px-3 text-text-muted font-medium uppercase text-xs"
+                        >
+                          {c.label}
+                        </th>
+                      ))}
                     </tr>
                   </thead>
                   <tbody>
@@ -602,7 +604,7 @@ export default function CompareDetailPage() {
                       if (rows.length === 0) {
                         return (
                           <tr>
-                            <td colSpan={7} className="py-4 px-3 text-center text-text-secondary">
+                            <td colSpan={4} className="py-4 px-3 text-center text-text-secondary">
                               Retrieval metrics not available
                             </td>
                           </tr>
@@ -610,20 +612,11 @@ export default function CompareDetailPage() {
                       }
 
                       // Find best values and FIRST index for each metric
-                      const metrics = [
-                        "hitAtK",
-                        "precisionAtK",
-                        "recallAtK",
-                        "f1AtK",
-                        "mrr",
-                        "ndcg",
-                      ] as const
-                      const bestByMetric = metrics.reduce(
-                        (acc, metric) => {
-                          const values = rows.map((r) => r.retrieval[metric])
+                      const bestByMetric = RETRIEVAL_COLUMNS.reduce(
+                        (acc, { key }) => {
+                          const values = rows.map((r) => r.retrieval[key])
                           const bestValue = Math.max(...values)
-                          const firstBestIndex = values.findIndex((v) => v === bestValue)
-                          acc[metric] = { value: bestValue, firstIndex: firstBestIndex }
+                          acc[key] = { value: bestValue, firstIndex: values.indexOf(bestValue) }
                           return acc
                         },
                         {} as Record<string, { value: number; firstIndex: number }>
@@ -632,72 +625,19 @@ export default function CompareDetailPage() {
                       return rows.map((row, rowIndex) => (
                         <tr key={row.provider} className="border-b border-border/50">
                           <td className="py-2 px-3 text-text-primary capitalize">{row.provider}</td>
-                          <td className="py-2 px-3 text-right font-mono">
-                            <span
-                              className={
-                                rowIndex === bestByMetric.hitAtK.firstIndex
-                                  ? "text-white font-semibold"
-                                  : "text-text-secondary"
-                              }
-                            >
-                              {(row.retrieval.hitAtK * 100).toFixed(0)}%
-                            </span>
-                          </td>
-                          <td className="py-2 px-3 text-right font-mono">
-                            <span
-                              className={
-                                rowIndex === bestByMetric.precisionAtK.firstIndex
-                                  ? "text-white font-semibold"
-                                  : "text-text-secondary"
-                              }
-                            >
-                              {(row.retrieval.precisionAtK * 100).toFixed(0)}%
-                            </span>
-                          </td>
-                          <td className="py-2 px-3 text-right font-mono">
-                            <span
-                              className={
-                                rowIndex === bestByMetric.recallAtK.firstIndex
-                                  ? "text-white font-semibold"
-                                  : "text-text-secondary"
-                              }
-                            >
-                              {(row.retrieval.recallAtK * 100).toFixed(0)}%
-                            </span>
-                          </td>
-                          <td className="py-2 px-3 text-right font-mono">
-                            <span
-                              className={
-                                rowIndex === bestByMetric.f1AtK.firstIndex
-                                  ? "text-white font-semibold"
-                                  : "text-text-secondary"
-                              }
-                            >
-                              {(row.retrieval.f1AtK * 100).toFixed(0)}%
-                            </span>
-                          </td>
-                          <td className="py-2 px-3 text-right font-mono">
-                            <span
-                              className={
-                                rowIndex === bestByMetric.mrr.firstIndex
-                                  ? "text-white font-semibold"
-                                  : "text-text-secondary"
-                              }
-                            >
-                              {row.retrieval.mrr.toFixed(2)}
-                            </span>
-                          </td>
-                          <td className="py-2 px-3 text-right font-mono">
-                            <span
-                              className={
-                                rowIndex === bestByMetric.ndcg.firstIndex
-                                  ? "text-white font-semibold"
-                                  : "text-text-secondary"
-                              }
-                            >
-                              {row.retrieval.ndcg.toFixed(2)}
-                            </span>
-                          </td>
+                          {RETRIEVAL_COLUMNS.map(({ key, format }) => (
+                            <td key={key} className="py-2 px-3 text-right font-mono">
+                              <span
+                                className={
+                                  rowIndex === bestByMetric[key].firstIndex
+                                    ? "text-white font-semibold"
+                                    : "text-text-secondary"
+                                }
+                              >
+                                {format(row.retrieval[key])}
+                              </span>
+                            </td>
+                          ))}
                         </tr>
                       ))
                     })()}

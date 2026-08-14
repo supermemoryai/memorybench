@@ -22,23 +22,17 @@ function aggregateRetrievalMetrics(metrics: RetrievalMetrics[]): RetrievalAggreg
     (acc, m) => ({
       hitAtK: acc.hitAtK + m.hitAtK,
       precisionAtK: acc.precisionAtK + m.precisionAtK,
-      recallAtK: acc.recallAtK + m.recallAtK,
-      f1AtK: acc.f1AtK + m.f1AtK,
       mrr: acc.mrr + m.mrr,
-      ndcg: acc.ndcg + m.ndcg,
       k: m.k,
     }),
-    { hitAtK: 0, precisionAtK: 0, recallAtK: 0, f1AtK: 0, mrr: 0, ndcg: 0, k: 10 }
+    { hitAtK: 0, precisionAtK: 0, mrr: 0, k: 10 }
   )
 
   const n = metrics.length
   return {
     hitAtK: sum.hitAtK / n,
     precisionAtK: sum.precisionAtK / n,
-    recallAtK: sum.recallAtK / n,
-    f1AtK: sum.f1AtK / n,
     mrr: sum.mrr / n,
-    ndcg: sum.ndcg / n,
     k: sum.k,
   }
 }
@@ -341,10 +335,7 @@ export function printReport(result: BenchmarkResult): void {
     console.log("\nRETRIEVAL QUALITY (K=" + result.retrieval.k + "):")
     console.log(`  Hit@K:      ${(result.retrieval.hitAtK * 100).toFixed(1)}%`)
     console.log(`  Precision:  ${(result.retrieval.precisionAtK * 100).toFixed(1)}%`)
-    console.log(`  Recall:     ${(result.retrieval.recallAtK * 100).toFixed(1)}%`)
-    console.log(`  F1:         ${(result.retrieval.f1AtK * 100).toFixed(1)}%`)
     console.log(`  MRR:        ${result.retrieval.mrr.toFixed(3)}`)
-    console.log(`  NDCG:       ${result.retrieval.ndcg.toFixed(3)}`)
   }
 
   console.log("-".repeat(60))
@@ -361,7 +352,7 @@ export function printReport(result: BenchmarkResult): void {
     )
     if (stats.retrieval) {
       console.log(
-        `    Retrieval: Hit@${stats.retrieval.k}=${(stats.retrieval.hitAtK * 100).toFixed(0)}%, P=${(stats.retrieval.precisionAtK * 100).toFixed(0)}%, R=${(stats.retrieval.recallAtK * 100).toFixed(0)}%, MRR=${stats.retrieval.mrr.toFixed(2)}`
+        `    Retrieval: Hit@${stats.retrieval.k}=${(stats.retrieval.hitAtK * 100).toFixed(0)}%, P=${(stats.retrieval.precisionAtK * 100).toFixed(0)}%, MRR=${stats.retrieval.mrr.toFixed(2)}`
       )
     }
   }

@@ -111,10 +111,7 @@ export interface LatencyStats {
 export interface RetrievalStats {
   hitAtK: number
   precisionAtK: number
-  recallAtK: number
-  f1AtK: number
   mrr: number
-  ndcg: number
   k: number
 }
 
@@ -217,7 +214,7 @@ export function RetrievalMetrics({ retrieval, byQuestionType }: RetrievalMetrics
         Retrieval Quality (K={retrieval.k})
       </h3>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
         <div className="bg-bg-primary p-3 rounded border border-border">
           <div className="text-xs text-text-muted uppercase tracking-wide mb-1">
             Hit@{retrieval.k}
@@ -228,23 +225,18 @@ export function RetrievalMetrics({ retrieval, byQuestionType }: RetrievalMetrics
           <div className="text-xs text-text-secondary">found relevant</div>
         </div>
         <div className="bg-bg-primary p-3 rounded border border-border">
+          <div className="text-xs text-text-muted uppercase tracking-wide mb-1">
+            Precision@{retrieval.k}
+          </div>
+          <div className="text-xl font-mono text-text-primary">
+            {(retrieval.precisionAtK * 100).toFixed(0)}%
+          </div>
+          <div className="text-xs text-text-secondary">relevant out of retrieved</div>
+        </div>
+        <div className="bg-bg-primary p-3 rounded border border-border">
           <div className="text-xs text-text-muted uppercase tracking-wide mb-1">MRR</div>
           <div className="text-xl font-mono text-text-primary">{retrieval.mrr.toFixed(2)}</div>
           <div className="text-xs text-text-secondary">mean reciprocal rank</div>
-        </div>
-        <div className="bg-bg-primary p-3 rounded border border-border">
-          <div className="text-xs text-text-muted uppercase tracking-wide mb-1">NDCG</div>
-          <div className="text-xl font-mono text-text-primary">{retrieval.ndcg.toFixed(2)}</div>
-          <div className="text-xs text-text-secondary">ranking quality</div>
-        </div>
-        <div className="bg-bg-primary p-3 rounded border border-border">
-          <div className="text-xs text-text-muted uppercase tracking-wide mb-1">
-            F1@{retrieval.k}
-          </div>
-          <div className="text-xl font-mono text-text-primary">
-            {(retrieval.f1AtK * 100).toFixed(0)}%
-          </div>
-          <div className="text-xs text-text-secondary">precision-recall balance</div>
         </div>
       </div>
 
@@ -269,47 +261,37 @@ export function RetrievalMetrics({ retrieval, byQuestionType }: RetrievalMetrics
             </tr>
           </thead>
           <tbody>
-            {(["hitAtK", "precisionAtK", "recallAtK", "f1AtK", "mrr", "ndcg"] as const).map(
-              (metric) => {
-                const labels: Record<string, string> = {
-                  hitAtK: `Hit@${retrieval.k}`,
-                  precisionAtK: "Precision",
-                  recallAtK: "Recall",
-                  f1AtK: "F1",
-                  mrr: "MRR",
-                  ndcg: "NDCG",
-                }
-                const tooltips: Record<string, string> = {
-                  hitAtK: "found at least one relevant result",
-                  precisionAtK: "relevant results out of retrieved",
-                  recallAtK: "found relevant content",
-                  f1AtK: "precision-recall balance",
-                  mrr: "mean reciprocal rank",
-                  ndcg: "ranking quality score",
-                }
-                const isPercentage = ["hitAtK", "precisionAtK", "recallAtK", "f1AtK"].includes(
-                  metric
-                )
-                const format = (v: number) =>
-                  isPercentage ? `${(v * 100).toFixed(1)}%` : v.toFixed(3)
-
-                return (
-                  <tr key={metric} className="border-b border-border/50">
-                    <td className="py-2 px-3 text-text-primary">
-                      <Tooltip text={tooltips[metric]}>{labels[metric]}</Tooltip>
-                    </td>
-                    <td className="py-2 px-3 text-right font-mono text-text-primary">
-                      {format(retrieval[metric])}
-                    </td>
-                    {questionTypes.map(([type, stats]) => (
-                      <td key={type} className="py-2 px-3 text-right font-mono text-text-secondary">
-                        {stats.retrieval ? format(stats.retrieval[metric]) : "—"}
-                      </td>
-                    ))}
-                  </tr>
-                )
+            {(["hitAtK", "precisionAtK", "mrr"] as const).map((metric) => {
+              const labels: Record<string, string> = {
+                hitAtK: `Hit@${retrieval.k}`,
+                precisionAtK: "Precision",
+                mrr: "MRR",
               }
-            )}
+              const tooltips: Record<string, string> = {
+                hitAtK: "found at least one relevant result",
+                precisionAtK: "relevant results out of retrieved",
+                mrr: "mean reciprocal rank",
+              }
+              const isPercentage = ["hitAtK", "precisionAtK"].includes(metric)
+              const format = (v: number) =>
+                isPercentage ? `${(v * 100).toFixed(1)}%` : v.toFixed(3)
+
+              return (
+                <tr key={metric} className="border-b border-border/50">
+                  <td className="py-2 px-3 text-text-primary">
+                    <Tooltip text={tooltips[metric]}>{labels[metric]}</Tooltip>
+                  </td>
+                  <td className="py-2 px-3 text-right font-mono text-text-primary">
+                    {format(retrieval[metric])}
+                  </td>
+                  {questionTypes.map(([type, stats]) => (
+                    <td key={type} className="py-2 px-3 text-right font-mono text-text-secondary">
+                      {stats.retrieval ? format(stats.retrieval[metric]) : "—"}
+                    </td>
+                  ))}
+                </tr>
+              )
+            })}
           </tbody>
         </table>
       </div>

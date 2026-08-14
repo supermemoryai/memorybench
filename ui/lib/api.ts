@@ -402,10 +402,7 @@ export interface BenchmarkResult {
   retrieval?: {
     hitAtK: number
     precisionAtK: number
-    recallAtK: number
-    f1AtK: number
     mrr: number
-    ndcg: number
     k: number
   }
   evaluations?: EvaluationResult[]

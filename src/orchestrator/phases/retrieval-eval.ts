@@ -1,6 +1,7 @@
 import type { RetrievalMetrics } from "../../types/unified"
 import type { LanguageModel } from "ai"
 import { generateText } from "ai"
+import { logger } from "../../utils/logger"
 
 interface RelevanceResult {
   id: string
@@ -12,7 +13,7 @@ async function evaluateAllChunks(
   question: string,
   groundTruth: string,
   searchResults: unknown[]
-): Promise<RelevanceResult[]> {
+): Promise<RelevanceResult[] | null> {
   if (searchResults.length === 0) return []
 
   const formattedResults = searchResults
@@ -51,6 +52,10 @@ Where:
 
 Return ONLY the JSON array, no other text.`
 
+  // A judge that times out, rate-limits, or answers unparseably tells us nothing about
+  // relevance. Returning all-zeros made that indistinguishable from "the provider retrieved
+  // nothing useful" and quietly dragged the provider's retrieval numbers down, so failures
+  // now return null and the question is left out of the aggregate instead.
   try {
     const response = await generateText({
       model,
@@ -59,89 +64,57 @@ Return ONLY the JSON array, no other text.`
 
     const jsonMatch = response.text.match(/\[[\s\S]*\]/)
     if (!jsonMatch) {
-      return searchResults.map((_, i) => ({ id: `result_${i + 1}`, relevant: 0 as const }))
+      logger.warn("Relevance judge returned no JSON array; skipping retrieval metrics")
+      return null
     }
 
-    const parsed = JSON.parse(jsonMatch[0]) as RelevanceResult[]
-    return parsed
-  } catch {
-    return searchResults.map((_, i) => ({ id: `result_${i + 1}`, relevant: 0 as const }))
+    return JSON.parse(jsonMatch[0]) as RelevanceResult[]
+  } catch (e) {
+    logger.warn(`Relevance judge failed; skipping retrieval metrics: ${e}`)
+    return null
   }
 }
 
-function calculateNDCG(relevanceScores: number[], idealRelevant: number): number {
-  const dcg = relevanceScores.reduce((sum, rel, i) => {
-    return sum + rel / Math.log2(i + 2)
-  }, 0)
-
-  const idealScores = Array(relevanceScores.length).fill(0)
-  for (let i = 0; i < Math.min(idealRelevant, idealScores.length); i++) {
-    idealScores[i] = 1
-  }
-  const idcg = idealScores.reduce((sum, rel, i) => {
-    return sum + rel / Math.log2(i + 2)
-  }, 0)
-
-  return idcg > 0 ? dcg / idcg : 0
-}
-
+/**
+ * Retrieval metrics for one question, or `undefined` when the relevance judge could not be
+ * consulted — the caller leaves those questions out of the aggregate rather than recording
+ * a zero it cannot justify.
+ *
+ * Only metrics that are well defined without a ground-truth relevance count are produced.
+ * Recall@K, F1@K and NDCG need to know how many relevant memories exist in the corpus; that
+ * number is not available here, and substituting the retrieved count (as this used to) makes
+ * recall identical to Hit@K and NDCG blind to anything the provider missed.
+ */
 export async function calculateRetrievalMetrics(
   model: LanguageModel,
   question: string,
   groundTruth: string,
   searchResults: unknown[],
   k: number = 10
-): Promise<RetrievalMetrics> {
+): Promise<RetrievalMetrics | undefined> {
   const resultsToEval = searchResults.slice(0, k)
 
   if (resultsToEval.length === 0) {
-    return {
-      hitAtK: 0,
-      precisionAtK: 0,
-      recallAtK: 0,
-      f1AtK: 0,
-      mrr: 0,
-      ndcg: 0,
-      k: 0,
-      relevantRetrieved: 0,
-      totalRelevant: 1,
-    }
+    // Retrieved nothing, so nothing was relevant. This is a real measurement, not a failure.
+    return { hitAtK: 0, precisionAtK: 0, mrr: 0, k: 0, relevantRetrieved: 0 }
   }
 
   const relevanceResults = await evaluateAllChunks(model, question, groundTruth, resultsToEval)
+  if (relevanceResults === null) return undefined
 
   const relevanceScores = resultsToEval.map((_, i) => {
-    const id = `result_${i + 1}`
-    const result = relevanceResults.find((r) => r.id === id)
+    const result = relevanceResults.find((r) => r.id === `result_${i + 1}`)
     return result?.relevant === 1 ? 1 : 0
   })
 
   const relevantRetrieved = relevanceScores.filter((r) => r === 1).length
-  const totalRelevant = Math.max(1, relevantRetrieved)
-
-  const hitAtK = relevantRetrieved > 0 ? 1 : 0
-
-  const precisionAtK = resultsToEval.length > 0 ? relevantRetrieved / resultsToEval.length : 0
-
-  const recallAtK = relevantRetrieved > 0 ? 1 : 0
-
-  const f1AtK =
-    precisionAtK + recallAtK > 0 ? (2 * (precisionAtK * recallAtK)) / (precisionAtK + recallAtK) : 0
-
   const firstRelevantIndex = relevanceScores.findIndex((r) => r === 1)
-  const mrr = firstRelevantIndex >= 0 ? 1 / (firstRelevantIndex + 1) : 0
-
-  const ndcg = calculateNDCG(relevanceScores, totalRelevant)
 
   return {
-    hitAtK,
-    precisionAtK,
-    recallAtK,
-    f1AtK,
-    mrr,
-    ndcg,
+    hitAtK: relevantRetrieved > 0 ? 1 : 0,
+    precisionAtK: relevantRetrieved / resultsToEval.length,
+    mrr: firstRelevantIndex >= 0 ? 1 / (firstRelevantIndex + 1) : 0,
     k: resultsToEval.length,
     relevantRetrieved,
-    totalRelevant,
   }
 }

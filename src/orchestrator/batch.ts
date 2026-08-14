@@ -1,7 +1,7 @@
 import type { ProviderName } from "../types/provider"
 import type { BenchmarkName } from "../types/benchmark"
 import type { SamplingConfig } from "../types/checkpoint"
-import type { BenchmarkResult } from "../types/unified"
+import type { BenchmarkResult, RetrievalAggregates } from "../types/unified"
 import { orchestrator, CheckpointManager } from "./index"
 import { createBenchmark } from "../benchmarks"
 import { logger } from "../utils/logger"
@@ -432,116 +432,46 @@ export class BatchManager {
     const hasRetrieval = reports.some((r) => r.report.retrieval)
     if (hasRetrieval) {
       const k = reports.find((r) => r.report.retrieval)?.report.retrieval?.k || 10
-      console.log(`\nRETRIEVAL METRICS (K=${k})`)
-      console.log(
-        "┌" +
-          "─".repeat(17) +
-          "┬" +
-          "─".repeat(9) +
-          "┬" +
-          "─".repeat(11) +
-          "┬" +
-          "─".repeat(10) +
-          "┬" +
-          "─".repeat(9) +
-          "┬" +
-          "─".repeat(9) +
-          "┬" +
-          "─".repeat(9) +
-          "┐"
-      )
-      console.log(
-        "│ " +
-          pad("Provider", 15) +
-          " │ " +
-          pad("Hit@K", 7) +
-          " │ " +
-          pad("Precision", 9) +
-          " │ " +
-          pad("Recall", 8) +
-          " │ " +
-          pad("F1", 7) +
-          " │ " +
-          pad("MRR", 7) +
-          " │ " +
-          pad("NDCG", 7) +
-          " │"
-      )
-      console.log(
-        "├" +
-          "─".repeat(17) +
-          "┼" +
-          "─".repeat(9) +
-          "┼" +
-          "─".repeat(11) +
-          "┼" +
-          "─".repeat(10) +
-          "┼" +
-          "─".repeat(9) +
-          "┼" +
-          "─".repeat(9) +
-          "┼" +
-          "─".repeat(9) +
-          "┤"
-      )
+      console.log(`
+RETRIEVAL METRICS (K=${k})`)
+
+      // Recall/F1/NDCG used to sit in this table but were degenerate without ground-truth
+      // relevance counts (see #67), so the columns are derived from one list rather than
+      // repeated across four border strings and two row branches.
+      const columns: Array<{
+        header: string
+        width: number
+        value: (r: RetrievalAggregates) => string
+      }> = [
+        { header: "Provider", width: 15, value: () => "" },
+        { header: "Hit@K", width: 7, value: (r) => padPct(r.hitAtK, 7) },
+        { header: "Precision", width: 9, value: (r) => padPct(r.precisionAtK, 9) },
+        { header: "MRR", width: 7, value: (r) => r.mrr.toFixed(3).padStart(7) },
+      ]
+
+      const border = (left: string, mid: string, right: string) =>
+        left + columns.map((c) => "─".repeat(c.width + 2)).join(mid) + right
+      const row = (cells: string[]) => "│ " + cells.join(" │ ") + " │"
+
+      console.log(border("┌", "┬", "┐"))
+      console.log(row(columns.map((c) => pad(c.header, c.width))))
+      console.log(border("├", "┼", "┤"))
 
       for (const { provider, report } of reports) {
-        if (report.retrieval) {
-          const r = report.retrieval
-          console.log(
-            "│ " +
-              pad(provider, 15) +
-              " │ " +
-              padPct(r.hitAtK, 7) +
-              " │ " +
-              padPct(r.precisionAtK, 9) +
-              " │ " +
-              padPct(r.recallAtK, 8) +
-              " │ " +
-              padPct(r.f1AtK, 7) +
-              " │ " +
-              r.mrr.toFixed(3).padStart(7) +
-              " │ " +
-              r.ndcg.toFixed(3).padStart(7) +
-              " │"
+        const retrieval = report.retrieval
+        console.log(
+          row(
+            columns.map((c, i) =>
+              i === 0
+                ? pad(provider, c.width)
+                : retrieval
+                  ? c.value(retrieval)
+                  : pad("N/A", c.width)
+            )
           )
-        } else {
-          console.log(
-            "│ " +
-              pad(provider, 15) +
-              " │ " +
-              pad("N/A", 7) +
-              " │ " +
-              pad("N/A", 9) +
-              " │ " +
-              pad("N/A", 8) +
-              " │ " +
-              pad("N/A", 7) +
-              " │ " +
-              pad("N/A", 7) +
-              " │ " +
-              pad("N/A", 7) +
-              " │"
-          )
-        }
+        )
       }
-      console.log(
-        "└" +
-          "─".repeat(17) +
-          "┴" +
-          "─".repeat(9) +
-          "┴" +
-          "─".repeat(11) +
-          "┴" +
-          "─".repeat(10) +
-          "┴" +
-          "─".repeat(9) +
-          "┴" +
-          "─".repeat(9) +
-          "┴" +
-          "─".repeat(9) +
-          "┘"
-      )
+      console.log(border("└", "┴", "┘"))
     }
 
     const allTypes = new Set<string>()
