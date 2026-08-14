@@ -90,6 +90,10 @@ export class Orchestrator {
     const judgeModelInfo = resolveModel(judgeModel)
     const judgeName = judgeModelInfo.provider as JudgeName
 
+    // Resolve the answering model up front too. It is otherwise first resolved in
+    // the answer phase, so an unusable alias would only surface after a full ingest.
+    resolveModel(answeringModel)
+
     logger.info(`Starting MemoryBench run: ${providerName} + ${benchmarkName}`)
     logger.info(`Run ID: ${runId}`)
     logger.info(
