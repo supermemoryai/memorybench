@@ -30,25 +30,28 @@ export interface UnifiedQuestion {
 
 export type SearchResult = unknown
 
+/**
+ * Retrieval quality over the results a provider returned for one question.
+ *
+ * Deliberately limited to metrics that are well defined without knowing how many relevant
+ * memories exist in the corpus. Recall@K, F1@K and NDCG were previously reported here, but
+ * with no ground-truth denominator they were computed against the retrieved set itself: recall
+ * reduced to exactly hitAtK, F1 to a re-encoding of precision, and NDCG's ideal ranking was
+ * built from what the provider happened to find, so it could never register a miss. See the
+ * issue trail on #67 before adding them back — they need per-question relevance labels first.
+ */
 export interface RetrievalMetrics {
   hitAtK: number
   precisionAtK: number
-  recallAtK: number
-  f1AtK: number
   mrr: number
-  ndcg: number
   k: number
   relevantRetrieved: number
-  totalRelevant: number
 }
 
 export interface RetrievalAggregates {
   hitAtK: number
   precisionAtK: number
-  recallAtK: number
-  f1AtK: number
   mrr: number
-  ndcg: number
   k: number
 }
 
