@@ -21,6 +21,7 @@ import type {
 import type { ConcurrencyConfig } from "../types/concurrency"
 import { PHASE_ORDER } from "../types/checkpoint"
 import { logger } from "../utils/logger"
+import { assertSafeId } from "../utils/paths"
 
 const RUNS_DIR = "./data/runs"
 
@@ -32,8 +33,11 @@ export class CheckpointManager {
     this.basePath = basePath
   }
 
+  // Every path this class builds routes through here, so validating the run ID once
+  // covers load/exists/create/delete/copyCheckpoint and the API routes that join
+  // onto getRunPath()/getResultsDir() themselves.
   getRunPath(runId: string): string {
-    return join(this.basePath, runId)
+    return join(this.basePath, assertSafeId(runId, "run ID"))
   }
 
   getCheckpointPath(runId: string): string {

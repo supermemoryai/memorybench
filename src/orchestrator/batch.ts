@@ -5,6 +5,7 @@ import type { BenchmarkResult } from "../types/unified"
 import { orchestrator, CheckpointManager } from "./index"
 import { createBenchmark } from "../benchmarks"
 import { logger } from "../utils/logger"
+import { assertSafeId } from "../utils/paths"
 import { existsSync, mkdirSync, readFileSync, writeFileSync, rmSync } from "fs"
 import { join } from "path"
 import { startRun, endRun } from "../server/runState"
@@ -84,7 +85,7 @@ function selectQuestionsBySampling(
 
 export class BatchManager {
   private getComparePath(compareId: string): string {
-    return join(COMPARE_DIR, compareId)
+    return join(COMPARE_DIR, assertSafeId(compareId, "comparison ID"))
   }
 
   private getManifestPath(compareId: string): string {
@@ -122,7 +123,7 @@ export class BatchManager {
     const manifest = this.loadManifest(compareId)
     if (manifest) {
       for (const run of manifest.runs) {
-        const runPath = join(RUNS_DIR, run.runId)
+        const runPath = join(RUNS_DIR, assertSafeId(run.runId, "run ID"))
         if (existsSync(runPath)) {
           rmSync(runPath, { recursive: true })
         }
@@ -131,7 +132,7 @@ export class BatchManager {
   }
 
   loadReport(runId: string): BenchmarkResult | null {
-    const reportPath = join(RUNS_DIR, runId, "report.json")
+    const reportPath = join(RUNS_DIR, assertSafeId(runId, "run ID"), "report.json")
     if (!existsSync(reportPath)) return null
     try {
       return JSON.parse(readFileSync(reportPath, "utf8")) as BenchmarkResult
