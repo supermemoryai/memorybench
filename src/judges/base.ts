@@ -28,6 +28,16 @@ System's Hypothesis: ${input.hypothesis}`
 }
 
 export function parseJudgeResponse(response: string): JudgeResult {
+  // An empty completion is not a verdict. Now that maxOutputTokens is actually enforced,
+  // a reasoning model can spend its whole ceiling on reasoning and return nothing; scoring
+  // that as "incorrect" would silently mark questions wrong and skew the run's accuracy.
+  // Throwing lets the evaluate phase record a real failure that a resume can retry.
+  if (!response.trim()) {
+    throw new Error(
+      "Judge returned an empty response (likely truncated before producing a verdict — check the model's maxOutputTokens)"
+    )
+  }
+
   try {
     const jsonMatch = response.match(/\{[\s\S]*\}/)
     if (!jsonMatch) {

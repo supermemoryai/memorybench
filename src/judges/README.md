@@ -43,10 +43,14 @@ interface ModelConfig {
     displayName: string
     supportsTemperature: boolean
     defaultTemperature: number
-    maxTokensParam: "maxTokens" | "max_completion_tokens"
     defaultMaxTokens: number
 }
 ```
+
+`defaultMaxTokens` is passed to the AI SDK as `maxOutputTokens`, which the SDK maps to each
+provider's own parameter — there is no per-provider parameter name to configure. Give
+reasoning/thinking models a roomy value: their reasoning tokens are billed against the same
+ceiling, so a tight cap can be spent before any visible answer is produced.
 
 ## Provider-Specific Prompts
 

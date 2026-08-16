@@ -1,9 +1,17 @@
 import { createOpenAI } from "@ai-sdk/openai"
 import { generateText } from "ai"
 import type { UnifiedSession } from "../types/unified"
+import { logger } from "../utils/logger"
 
 /** Model used for memory extraction (fast, cheap, sufficient for extraction) */
 const EXTRACTION_MODEL = "gpt-4o-mini"
+/**
+ * A long session can yield dozens of bullets, and this ceiling is now actually enforced
+ * (it previously used the AI SDK v4 `maxTokens` name and was silently dropped), so it needs
+ * real headroom: a truncated extraction quietly drops memories from the corpus the
+ * filesystem/rag providers are scored on.
+ */
+const EXTRACTION_MAX_TOKENS = 8000
 
 /**
  * Build an extraction prompt that instructs the LLM to extract structured
@@ -74,14 +82,20 @@ export async function extractMemories(
 ): Promise<string> {
   const prompt = buildExtractionPrompt(session)
 
-  const params: Record<string, unknown> = {
+  const { text, finishReason } = await generateText({
     model: openai(EXTRACTION_MODEL),
     prompt,
-    maxTokens: 2000,
+    maxOutputTokens: EXTRACTION_MAX_TOKENS,
     temperature: 0,
-  }
+  })
 
-  const { text } = await generateText(params as Parameters<typeof generateText>[0])
+  // Truncation here silently shrinks the memory corpus, which reads as a provider
+  // quality problem rather than a harness limit. Say so instead.
+  if (finishReason === "length") {
+    logger.warn(
+      `Memory extraction for session ${session.sessionId} hit the ${EXTRACTION_MAX_TOKENS}-token ceiling and was truncated; some memories are missing.`
+    )
+  }
 
   return text.trim()
 }
