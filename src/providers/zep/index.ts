@@ -13,6 +13,21 @@ import { ZEP_PROMPTS } from "./prompts"
 
 const MAX_DATA_SIZE = 9500
 
+/** Used only when the caller supplies no limit; the search phase always passes one. */
+export const DEFAULT_SEARCH_LIMIT = 20
+
+/**
+ * Zep searches edges and nodes as two separate queries and concatenates the results, so the
+ * caller's limit must be divided between them. Requesting `limit` of each returned up to 2x
+ * the requested count, handing Zep more answer-prompt context than the other providers got.
+ *
+ * Kept edge-heavy (2:1), matching the previous 20-edge / 10-node intent.
+ */
+export function splitSearchBudget(limit: number): { edgeLimit: number; nodeLimit: number } {
+  const nodeLimit = Math.max(1, Math.floor(limit / 3))
+  return { edgeLimit: Math.max(0, limit - nodeLimit), nodeLimit }
+}
+
 function splitIntoChunks(text: string, maxSize: number): string[] {
   if (text.length <= maxSize) return [text]
 
@@ -240,8 +255,7 @@ export class ZepProvider implements Provider {
     }
 
     const finalGraphId = this.graphIds.get(options.containerTag)!
-    const edgeLimit = options.limit || 20
-    const nodeLimit = Math.min(edgeLimit, 10)
+    const { edgeLimit, nodeLimit } = splitSearchBudget(options.limit || DEFAULT_SEARCH_LIMIT)
 
     const [edgesResponse, nodesResponse] = await Promise.all([
       this.client.graph.search({

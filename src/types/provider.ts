@@ -15,6 +15,15 @@ export interface IngestOptions {
 
 export interface SearchOptions {
   containerTag: string
+  /**
+   * Hard cap on the number of results `search` may return, not a hint.
+   *
+   * Every retrieved result is fed to the answering model as context, so a provider that
+   * returns more than it was asked for gets more context than the providers it is being
+   * compared against — an accuracy and token advantage unrelated to retrieval quality.
+   * If a provider searches several scopes, split this budget between them rather than
+   * requesting `limit` of each.
+   */
   limit?: number
   threshold?: number
 }

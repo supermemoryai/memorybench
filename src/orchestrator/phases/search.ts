@@ -8,6 +8,13 @@ import { logger } from "../../utils/logger"
 import { ConcurrentExecutor } from "../concurrent"
 import { resolveConcurrency } from "../../types/concurrency"
 
+/**
+ * Results requested per question. Every provider gets the same budget, and the same budget
+ * is what retrieval metrics are computed over (`calculateRetrievalMetrics` defaults to k=10).
+ */
+const SEARCH_LIMIT = 10
+const SEARCH_THRESHOLD = 0.3
+
 export async function runSearchPhase(
   provider: Provider,
   benchmark: Benchmark,
@@ -55,11 +62,22 @@ export async function runSearchPhase(
       })
 
       try {
-        const results = await provider.search(question.question, {
+        const returned = await provider.search(question.question, {
           containerTag,
-          limit: 10,
-          threshold: 0.3,
+          limit: SEARCH_LIMIT,
+          threshold: SEARCH_THRESHOLD,
         })
+
+        // Enforce the limit the provider was given. Every result becomes answer-prompt
+        // context, so a provider returning more than its peers gets a free accuracy and
+        // token advantage; truncating here keeps the comparison like-for-like even if a
+        // provider ignores the cap, and the warning stops it happening silently.
+        if (returned.length > SEARCH_LIMIT) {
+          logger.warn(
+            `${provider.name} returned ${returned.length} results for a limit of ${SEARCH_LIMIT}; truncating to keep providers comparable`
+          )
+        }
+        const results = returned.slice(0, SEARCH_LIMIT)
 
         const durationMs = Date.now() - startTime
         const resultFile = join(resultsDir, `${question.questionId}.json`)
