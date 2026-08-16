@@ -40,18 +40,32 @@ export class SupermemoryProvider implements Provider {
 
       const formattedDate = session.metadata?.formattedDate as string
       const isoDate = session.metadata?.date as string
-      const content = formattedDate
+      const documentTag = session.metadata?.documentTag as string | undefined
+      const stateIndex = session.metadata?.stateIndex as number | undefined
+      const documentType = session.metadata?.documentType as string | undefined
+      const trajectoryId = session.metadata?.trajectoryId as string | undefined
+      const filterByMetadata = session.metadata?.filterByMetadata as
+        | Record<string, string | number | boolean | string[]>
+        | undefined
+      const sessionContent = formattedDate
         ? `Here is the date the following session took place: ${formattedDate}\n\nHere is the session as a stringified JSON:\n${sessionStr}`
         : `Here is the session as a stringified JSON:\n${sessionStr}`
+      const content = documentTag ? `${documentTag}\n\n${sessionContent}` : sessionContent
 
-      const response = await this.client.add({
+      const addParams = {
         content,
         containerTag: options.containerTag,
         metadata: {
           sessionId: session.sessionId,
           ...(isoDate ? { date: isoDate } : {}),
+          ...(documentTag ? { documentTag } : {}),
+          ...(stateIndex !== undefined ? { stateIndex } : {}),
+          ...(documentType ? { documentType } : {}),
+          ...(trajectoryId ? { trajectoryId } : {}),
         },
-      })
+        ...(filterByMetadata ? { filterByMetadata } : {}),
+      }
+      const response = await this.client.add(addParams)
       documentIds.push(response.id)
       logger.debug(`Ingested session ${session.sessionId}`)
     }
@@ -120,16 +134,31 @@ export class SupermemoryProvider implements Provider {
   async search(query: string, options: SearchOptions): Promise<unknown[]> {
     if (!this.client) throw new Error("Provider not initialized")
 
+    const filters =
+      options.maxStateIndex === undefined
+        ? undefined
+        : {
+            AND: [
+              {
+                key: "stateIndex",
+                value: String(options.maxStateIndex),
+                filterType: "numeric" as const,
+                numericOperator: "<=" as const,
+              },
+            ],
+          }
+
     const response = await this.client.search.memories({
       q: query,
       containerTag: options.containerTag,
+      ...(filters ? { filters } : {}),
       limit: 30,
       threshold: options.threshold || 0.3,
-			searchMode: "hybrid",
-			include: {
-				summaries: true,
-				chunks: true
-      }
+      searchMode: "hybrid",
+      include: {
+        summaries: true,
+        chunks: true,
+      },
     })
 
     return response.results || []

@@ -35,6 +35,7 @@ interface Benchmark {
 |-----------|--------|-------------|
 | `locomo` | GitHub snap-research/locomo | Long context memory benchmark |
 | `longmemeval` | HuggingFace xiaowu0162/longmemeval-cleaned | Long-term memory evaluation |
+| `longmemeval-v2` | HuggingFace xiaowu0162/longmemeval-v2 | Memory over multimodal web-agent trajectories |
 | `convomem` | HuggingFace Salesforce/ConvoMem | Conversational memory benchmark |
 
 ## Question Types

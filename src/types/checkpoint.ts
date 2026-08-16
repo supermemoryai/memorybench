@@ -122,6 +122,9 @@ export interface RunCheckpoint {
   createdAt: string
   updatedAt: string
   limit?: number
+  trajectoryLimit?: number
+  trajectoryDocument?: string
+  trajectoryFormat?: string
   sampling?: SamplingConfig
   targetQuestionIds?: string[]
   concurrency?: ConcurrencyConfig

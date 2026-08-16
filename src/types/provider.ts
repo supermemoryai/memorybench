@@ -17,6 +17,8 @@ export interface SearchOptions {
   containerTag: string
   limit?: number
   threshold?: number
+  /** Include only memories/documents whose numeric stateIndex is at or below this cutoff. */
+  maxStateIndex?: number
 }
 
 export interface IngestResult {

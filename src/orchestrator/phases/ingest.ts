@@ -41,8 +41,17 @@ export async function runIngestPhase(
     runId: checkpoint.runId,
     phaseName: "ingest",
     executeTask: async ({ item: question, index, total }) => {
-      const containerTag = `${question.questionId}-${checkpoint.dataSourceRunId}`
+      const containerTag = checkpoint.questions[question.questionId].containerTag
       const sessions = benchmark.getHaystackSessions(question.questionId)
+      const requiresSequentialIndexing = sessions.some(
+        (session) => session.metadata?.filterByMetadata !== undefined
+      )
+
+      if (requiresSequentialIndexing) {
+        logger.info(
+          `Using sequential filtered-write ingestion for ${question.questionId}; each document will finish indexing before the next is submitted`
+        )
+      }
 
       const sessionsMetadata = sessions.map((s) => ({
         sessionId: s.sessionId,
@@ -72,6 +81,34 @@ export async function runIngestPhase(
           combinedResult.documentIds.push(...result.documentIds)
           if (result.taskIds) {
             combinedResult.taskIds!.push(...result.taskIds)
+          }
+
+          if (requiresSequentialIndexing) {
+            let failedIds: string[] = []
+            await provider.awaitIndexing(result, containerTag, (progress) => {
+              failedIds = progress.failedIds
+            })
+
+            if (failedIds.length > 0) {
+              throw new Error(
+                `Indexing failed for session ${session.sessionId}: ${failedIds.join(", ")}`
+              )
+            }
+
+            logger.info(`Indexed ${session.sessionId}`)
+
+            const postIndexingDelayMs = session.metadata?.postIndexingDelayMs
+            if (
+              typeof postIndexingDelayMs === "number" &&
+              Number.isFinite(postIndexingDelayMs) &&
+              postIndexingDelayMs > 0
+            ) {
+              logger.info(
+                `Waiting ${Math.round(postIndexingDelayMs / 1000)} seconds after ${session.sessionId} before continuing`
+              )
+              await new Promise((resolve) => setTimeout(resolve, postIndexingDelayMs))
+              logger.info(`Post-indexing wait complete for ${session.sessionId}`)
+            }
           }
 
           completedSessions.push(session.sessionId)

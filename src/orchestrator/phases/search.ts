@@ -46,7 +46,7 @@ export async function runSearchPhase(
     checkpoint.runId,
     "search",
     async ({ item: question, index, total }) => {
-      const containerTag = `${question.questionId}-${checkpoint.dataSourceRunId}`
+      const containerTag = checkpoint.questions[question.questionId].containerTag
 
       const startTime = Date.now()
       checkpointManager.updatePhase(checkpoint, question.questionId, "search", {

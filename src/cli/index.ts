@@ -151,10 +151,15 @@ Available benchmark datasets for evaluation:
                  Tests: user facts, assistant facts, preferences, implicit connections
                  Source: HuggingFace Salesforce/ConvoMem (downloaded on first use)
 
+  longmemeval-v2 LongMemEval-V2 - Memory over web-agent trajectories
+                 Tests: static UI facts, dynamic environment state, workflows, gotchas
+                 Source: HuggingFace xiaowu0162/longmemeval-v2 (local data required)
+
 Usage:
   -b locomo        Run LoCoMo benchmark
   -b longmemeval   Run LongMemEval benchmark
   -b convomem      Run ConvoMem benchmark
+  -b longmemeval-v2 Run LongMemEval-V2 benchmark
 `)
 }
 

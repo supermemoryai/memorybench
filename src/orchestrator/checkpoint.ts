@@ -105,7 +105,7 @@ export class CheckpointManager {
     // If we get here, all retries failed or it was a non-retriable error
     try {
       unlinkSync(tempPath)
-    } catch { }
+    } catch {}
     throw lastError
   }
 
@@ -125,6 +125,9 @@ export class CheckpointManager {
     answeringModel: string,
     options?: {
       limit?: number
+      trajectoryLimit?: number
+      trajectoryDocument?: string
+      trajectoryFormat?: string
       sampling?: SamplingConfig
       targetQuestionIds?: string[]
       dataSourceRunId?: string
@@ -143,6 +146,9 @@ export class CheckpointManager {
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       limit: options?.limit,
+      trajectoryLimit: options?.trajectoryLimit,
+      trajectoryDocument: options?.trajectoryDocument,
+      trajectoryFormat: options?.trajectoryFormat,
       sampling: options?.sampling,
       targetQuestionIds: options?.targetQuestionIds,
       concurrency: options?.concurrency,
@@ -284,12 +290,12 @@ export class CheckpointManager {
       evaluated: questions.filter((q) => q.phases.evaluate.status === "completed").length,
       ...(episodesTotal > 0
         ? {
-          indexingEpisodes: {
-            total: episodesTotal,
-            completed: episodesCompleted,
-            failed: episodesFailed,
-          },
-        }
+            indexingEpisodes: {
+              total: episodesTotal,
+              completed: episodesCompleted,
+              failed: episodesFailed,
+            },
+          }
         : {}),
     }
   }
@@ -359,6 +365,9 @@ export class CheckpointManager {
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       limit: source.limit,
+      trajectoryLimit: source.trajectoryLimit,
+      trajectoryDocument: source.trajectoryDocument,
+      trajectoryFormat: source.trajectoryFormat,
       sampling: source.sampling,
       targetQuestionIds: source.targetQuestionIds,
       concurrency: source.concurrency,

@@ -24,6 +24,10 @@ export interface OrchestratorOptions {
   runId: string
   answeringModel?: string
   limit?: number
+  trajectoryLimit?: number
+  trajectoryDocument?: string
+  trajectoryFormat?: string
+  containerTag?: string
   sampling?: SamplingConfig
   concurrency?: ConcurrencyConfig
   force?: boolean
@@ -80,6 +84,10 @@ export class Orchestrator {
       runId,
       answeringModel = "gpt-4o",
       limit,
+      trajectoryLimit,
+      trajectoryDocument,
+      trajectoryFormat,
+      containerTag,
       sampling,
       concurrency,
       force = false,
@@ -112,6 +120,18 @@ export class Orchestrator {
     } else {
       logger.info(`No sampling or limit provided`)
     }
+    if (trajectoryLimit !== undefined) {
+      logger.info(`Trajectory limit: ${trajectoryLimit} per selected question`)
+    }
+    if (trajectoryDocument !== undefined) {
+      logger.info(`Trajectory document: ${trajectoryDocument}`)
+    }
+    if (trajectoryFormat !== undefined) {
+      logger.info(`Trajectory format: ${trajectoryFormat}`)
+    }
+    if (containerTag !== undefined) {
+      logger.info(`Container tag: ${containerTag}`)
+    }
 
     if (force && this.checkpointManager.exists(runId)) {
       this.checkpointManager.delete(runId)
@@ -131,17 +151,81 @@ export class Orchestrator {
         benchmarkName,
         judgeModel,
         answeringModel,
-        { limit, sampling, concurrency, status: "initializing" }
+        {
+          limit,
+          trajectoryLimit,
+          trajectoryDocument,
+          trajectoryFormat,
+          sampling,
+          concurrency,
+          status: "initializing",
+        }
       )
       logger.info("Created checkpoint (initializing)")
     }
 
+    let effectiveTrajectoryLimit = trajectoryLimit
+    let effectiveTrajectoryDocument = trajectoryDocument
+    let effectiveTrajectoryFormat = trajectoryFormat
+    if (!isNewRun) {
+      const existingCheckpoint = this.checkpointManager.load(runId)!
+      if (
+        trajectoryLimit !== undefined &&
+        existingCheckpoint.trajectoryLimit !== undefined &&
+        trajectoryLimit !== existingCheckpoint.trajectoryLimit
+      ) {
+        throw new Error(
+          `Run ${runId} uses trajectory limit ${existingCheckpoint.trajectoryLimit}, not ${trajectoryLimit}`
+        )
+      }
+      effectiveTrajectoryLimit = existingCheckpoint.trajectoryLimit ?? trajectoryLimit
+      if (
+        trajectoryDocument !== undefined &&
+        existingCheckpoint.trajectoryDocument !== undefined &&
+        trajectoryDocument !== existingCheckpoint.trajectoryDocument
+      ) {
+        throw new Error(
+          `Run ${runId} uses trajectory document ${existingCheckpoint.trajectoryDocument}, not ${trajectoryDocument}`
+        )
+      }
+      effectiveTrajectoryDocument = existingCheckpoint.trajectoryDocument ?? trajectoryDocument
+      if (
+        trajectoryFormat !== undefined &&
+        existingCheckpoint.trajectoryFormat !== undefined &&
+        trajectoryFormat !== existingCheckpoint.trajectoryFormat
+      ) {
+        throw new Error(
+          `Run ${runId} uses trajectory format ${existingCheckpoint.trajectoryFormat}, not ${trajectoryFormat}`
+        )
+      }
+      effectiveTrajectoryFormat = existingCheckpoint.trajectoryFormat ?? trajectoryFormat
+    }
+
     const benchmark = createBenchmark(benchmarkName)
-    await benchmark.load()
+    await benchmark.load({
+      trajectoryLimit: effectiveTrajectoryLimit,
+      trajectoryDocument: effectiveTrajectoryDocument,
+      trajectoryFormat: effectiveTrajectoryFormat,
+    })
     const allQuestions = benchmark.getQuestions()
 
     if (this.checkpointManager.exists(runId) && !isNewRun) {
       checkpoint = this.checkpointManager.load(runId)!
+      if (checkpoint.trajectoryLimit === undefined && effectiveTrajectoryLimit !== undefined) {
+        checkpoint.trajectoryLimit = effectiveTrajectoryLimit
+        this.checkpointManager.save(checkpoint)
+      }
+      if (
+        checkpoint.trajectoryDocument === undefined &&
+        effectiveTrajectoryDocument !== undefined
+      ) {
+        checkpoint.trajectoryDocument = effectiveTrajectoryDocument
+        this.checkpointManager.save(checkpoint)
+      }
+      if (checkpoint.trajectoryFormat === undefined && effectiveTrajectoryFormat !== undefined) {
+        checkpoint.trajectoryFormat = effectiveTrajectoryFormat
+        this.checkpointManager.save(checkpoint)
+      }
 
       effectiveLimit = checkpoint.limit
       targetQuestionIds = checkpoint.targetQuestionIds
@@ -236,9 +320,13 @@ export class Orchestrator {
         ? allQuestions.filter((q) => targetQuestionIds!.includes(q.questionId))
         : allQuestions
 
+      if (containerTag && questionsToInit.length !== 1) {
+        throw new Error("A custom container tag requires exactly one selected question")
+      }
+
       for (const q of questionsToInit) {
-        const containerTag = `${q.questionId}-${checkpoint.dataSourceRunId}`
-        this.checkpointManager.initQuestion(checkpoint, q.questionId, containerTag, {
+        const questionContainerTag = containerTag || `${q.questionId}-${checkpoint.dataSourceRunId}`
+        this.checkpointManager.initQuestion(checkpoint, q.questionId, questionContainerTag, {
           question: q.question,
           groundTruth: q.groundTruth,
           questionType: q.questionType,

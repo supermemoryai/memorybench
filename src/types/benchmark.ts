@@ -2,6 +2,9 @@ import type { UnifiedQuestion, UnifiedSession, QuestionTypeRegistry } from "./un
 
 export interface BenchmarkConfig {
   dataPath?: string
+  trajectoryLimit?: number
+  trajectoryDocument?: string
+  trajectoryFormat?: string
 }
 
 export interface QuestionFilter {
@@ -20,4 +23,4 @@ export interface Benchmark {
   getQuestionTypes(): QuestionTypeRegistry
 }
 
-export type BenchmarkName = "locomo" | "longmemeval" | "convomem"
+export type BenchmarkName = "locomo" | "longmemeval" | "longmemeval-v2" | "convomem"
