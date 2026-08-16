@@ -1,3 +1,6 @@
+import { mkdir, appendFile, readFile, writeFile, rm } from "node:fs/promises"
+import { existsSync } from "node:fs"
+import { join } from "node:path"
 import { embedMany, embed } from "ai"
 import { createOpenAI } from "@ai-sdk/openai"
 import type {
@@ -14,6 +17,13 @@ import { HybridSearchEngine } from "./search"
 import type { Chunk } from "./search"
 import { RAG_PROMPTS } from "./prompts"
 import { extractMemories } from "../../prompts/extraction"
+
+/**
+ * Where ingested chunks are cached so a resumed run can search data it ingested in an earlier
+ * process. Mirrors the layout the filesystem provider already uses
+ * (`data/providers/filesystem/...`), one appendable JSONL file per container.
+ */
+const BASE_DIR = join(process.cwd(), "data", "providers", "rag")
 
 /** Target chunk size in characters (~400 tokens) */
 const CHUNK_SIZE = 1600
@@ -67,6 +77,62 @@ function chunkText(text: string, chunkSize: number = CHUNK_SIZE, overlap: number
   return chunks.filter((c) => c.length > 0)
 }
 
+// ─── Chunk persistence ───────────────────────────────────────────────────────
+
+/** Sanitize a string for safe use as a filesystem path component */
+function sanitizePath(input: string): string {
+  return input.replace(/[^a-zA-Z0-9_.-]/g, "_")
+}
+
+function containerFile(containerTag: string): string {
+  return join(BASE_DIR, `${sanitizePath(containerTag)}.jsonl`)
+}
+
+/**
+ * Embeddings dominate the on-disk size (1536 floats per chunk), so they are stored as
+ * base64 float32 rather than JSON numbers — roughly a quarter of the bytes. float32 is the
+ * precision the cosine similarity needs; it does not change ranking.
+ */
+function encodeEmbedding(embedding: number[]): string {
+  return Buffer.from(new Float32Array(embedding).buffer).toString("base64")
+}
+
+function decodeEmbedding(encoded: string): number[] {
+  const buf = Buffer.from(encoded, "base64")
+  return Array.from(new Float32Array(buf.buffer, buf.byteOffset, buf.byteLength / 4))
+}
+
+/** One JSON object per line, so ingest can append without rewriting the container. */
+export function serializeChunks(chunks: Chunk[]): string {
+  return chunks
+    .map((c) => JSON.stringify({ ...c, embedding: encodeEmbedding(c.embedding) }) + "\n")
+    .join("")
+}
+
+export function parseCachedChunks(raw: string): Chunk[] {
+  const chunks: Chunk[] = []
+  const seen = new Set<string>()
+
+  for (const line of raw.split("\n")) {
+    if (!line.trim()) continue
+    let parsed: (Omit<Chunk, "embedding"> & { embedding: string }) | null = null
+    try {
+      parsed = JSON.parse(line)
+    } catch {
+      // A process killed mid-append can leave one truncated line; the rest is still good.
+      logger.warn("Skipping unreadable cached RAG chunk")
+      continue
+    }
+    // Chunk IDs are deterministic, so a re-ingest can append duplicates. Collapse them here:
+    // the BM25 index counts each add, so replaying them would skew IDF and length norms.
+    if (!parsed || seen.has(parsed.id)) continue
+    seen.add(parsed.id)
+    chunks.push({ ...parsed, embedding: decodeEmbedding(parsed.embedding) })
+  }
+
+  return chunks
+}
+
 // ─── Provider ────────────────────────────────────────────────────────────────
 
 /**
@@ -83,6 +149,9 @@ function chunkText(text: string, chunkSize: number = CHUNK_SIZE, overlap: number
  * - Date-organized: Extracted memories include date context (like OpenClaw's
  *   memory/YYYY-MM-DD.md daily logs)
  * - No external memory service required - all local except for LLM + embedding API
+ * - Durable: chunks and their embeddings are cached under data/providers/rag so a run
+ *   resumed in a new process searches the data it ingested earlier, instead of an empty
+ *   index. Expect a few MB per question; `data/` is scratch space and gitignored.
  */
 export class RAGProvider implements Provider {
   name = "rag"
@@ -108,6 +177,16 @@ export class RAGProvider implements Provider {
 
   async ingest(sessions: UnifiedSession[], options: IngestOptions): Promise<IngestResult> {
     if (!this.openai) throw new Error("Provider not initialized")
+
+    // Create the container file up front, before we know whether these sessions produce any
+    // chunks. Its *existence* is what tells a later search "ingest ran for this container",
+    // which distinguishes a genuinely empty container from data that was lost with the
+    // process — the two used to be indistinguishable, and both scored 0%.
+    await mkdir(BASE_DIR, { recursive: true })
+    const file = containerFile(options.containerTag)
+    if (!existsSync(file)) {
+      await writeFile(file, "", "utf-8")
+    }
 
     const allChunks: Array<{
       text: string
@@ -181,8 +260,9 @@ export class RAGProvider implements Provider {
       )
     }
 
-    // Step 3: Add to search engine
+    // Step 3: Add to search engine and cache to disk so a resumed run can still find them
     this.searchEngine.addChunks(options.containerTag, embeddedChunks)
+    await appendFile(file, serializeChunks(embeddedChunks), "utf-8")
 
     const documentIds = embeddedChunks.map((c) => c.id)
     logger.debug(
@@ -205,8 +285,37 @@ export class RAGProvider implements Provider {
     })
   }
 
+  /**
+   * Repopulate the in-memory index from the on-disk cache. Needed whenever search runs in a
+   * different process than ingest did: the checkpoint records ingest/indexing as completed, so
+   * both phases are skipped on resume and nothing else would ever put the chunks back.
+   *
+   * Cached embeddings are reused rather than recomputed, which keeps this pure disk I/O — an
+   * embedding call here would land inside the search phase's measured latency.
+   */
+  private async loadFromCache(containerTag: string): Promise<void> {
+    if (this.searchEngine.getChunkCount(containerTag) > 0) return
+
+    const file = containerFile(containerTag)
+    if (!existsSync(file)) {
+      throw new Error(
+        `No ingested data for ${containerTag}. The RAG cache at ${file} is missing, ` +
+          `so this run cannot be resumed — re-run ingest for it (e.g. with --force).`
+      )
+    }
+
+    const chunks = parseCachedChunks(await readFile(file, "utf-8"))
+
+    if (chunks.length > 0) {
+      this.searchEngine.addChunks(containerTag, chunks)
+      logger.debug(`Restored ${chunks.length} cached chunks for ${containerTag}`)
+    }
+  }
+
   async search(query: string, options: SearchOptions): Promise<unknown[]> {
     if (!this.openai) throw new Error("Provider not initialized")
+
+    await this.loadFromCache(options.containerTag)
 
     // Generate query embedding
     const embeddingModel = this.openai.embedding(EMBEDDING_MODEL)
@@ -230,6 +339,7 @@ export class RAGProvider implements Provider {
 
   async clear(containerTag: string): Promise<void> {
     this.searchEngine.clear(containerTag)
+    await rm(containerFile(containerTag), { force: true })
     logger.info(`Cleared RAG data for: ${containerTag}`)
   }
 }
