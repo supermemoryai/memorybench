@@ -58,9 +58,19 @@ export async function runIngestPhase(
       })
 
       try {
-        const completedSessions =
-          checkpoint.questions[question.questionId].phases.ingest.completedSessions
-        const combinedResult: IngestResult = { documentIds: [], taskIds: [] }
+        const ingestPhase = checkpoint.questions[question.questionId].phases.ingest
+        const completedSessions = ingestPhase.completedSessions
+
+        // Start from what earlier attempts already persisted rather than merging it
+        // in at the end, so the accumulated result covers every session listed in
+        // completedSessions at every point in the loop, not just once the loop has
+        // run to completion. The arrays are copied so the working result is not an
+        // alias of the checkpoint's until it is written back below.
+        const previousResult = ingestPhase.ingestResult
+        const combinedResult: IngestResult = {
+          documentIds: [...(previousResult?.documentIds || [])],
+          taskIds: [...(previousResult?.taskIds || [])],
+        }
 
         for (const session of sessions) {
           if (completedSessions.includes(session.sessionId)) {
@@ -74,28 +84,21 @@ export async function runIngestPhase(
             combinedResult.taskIds!.push(...result.taskIds)
           }
 
+          // Persist the ids together with the session that produced them. A session
+          // recorded in completedSessions is skipped on resume, so ids left only in
+          // this in-memory object would be lost for good if a later session threw —
+          // and indexing would then wait on a short list and let search run before
+          // those sessions were queryable. save() serialises at call time, so
+          // handing it the working object records the ids gathered so far.
           completedSessions.push(session.sessionId)
           checkpointManager.updatePhase(checkpoint, question.questionId, "ingest", {
             completedSessions,
+            ingestResult: combinedResult,
           })
         }
 
         if (combinedResult.taskIds && combinedResult.taskIds.length === 0) {
           delete combinedResult.taskIds
-        }
-
-        const existingResult = checkpoint.questions[question.questionId].phases.ingest.ingestResult
-        if (existingResult) {
-          combinedResult.documentIds = [
-            ...existingResult.documentIds,
-            ...combinedResult.documentIds,
-          ]
-          if (existingResult.taskIds || combinedResult.taskIds) {
-            combinedResult.taskIds = [
-              ...(existingResult.taskIds || []),
-              ...(combinedResult.taskIds || []),
-            ]
-          }
         }
 
         const durationMs = Date.now() - startTime
