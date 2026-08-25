@@ -32,7 +32,7 @@ Respond with ONLY a JSON object:
 {"score": 1, "label": "correct", "explanation": "..."} if the response contains the correct answer
 {"score": 0, "label": "incorrect", "explanation": "..."} if the response does not contain the correct answer`
 
-export const ABSTENTION_JUDGE_PROMPT = `You are evaluating an abstention question. The correct answer is that the information was NOT in the conversation, so the system should abstain or say it doesn't know.
+export const ABSTENTION_JUDGE_PROMPT = `You are evaluating an abstention question. The correct answer is that the information was NOT in the conversation, so the system should abstain or say it doesn't know. You are given an explanation of why the question is unanswerable, not an answer to match against.
 
 The hypothesis is CORRECT if the system correctly abstains, says "I don't know", indicates uncertainty, or explicitly states the information is not available. It is INCORRECT if the system makes up an answer or hallucinates.
 
@@ -58,10 +58,13 @@ Respond with ONLY a JSON object:
 {"score": 1, "label": "correct", "explanation": "..."} if the response satisfies the rubric
 {"score": 0, "label": "incorrect", "explanation": "..."} if the response does not satisfy the rubric`
 
-export function getJudgePromptForType(questionType: string): string {
+export function getJudgePromptForType(questionType: string, isAbstention?: boolean): string {
   const type = questionType.toLowerCase()
 
-  if (type.includes("abstention") || type.includes("adversarial")) {
+  // `isAbstention` comes from the benchmark and wins over the type name, because not every
+  // benchmark encodes abstention in the question type (LongMemEval keeps the original type
+  // and marks abstention with an `_abs` question id suffix).
+  if (isAbstention || type.includes("abstention") || type.includes("adversarial")) {
     return ABSTENTION_JUDGE_PROMPT
   }
 
