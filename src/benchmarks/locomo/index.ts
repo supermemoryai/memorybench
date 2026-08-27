@@ -67,10 +67,10 @@ export const LOCOMO_QUESTION_TYPES: QuestionTypeRegistry = {
 }
 
 const CATEGORY_TO_TYPE: Record<number, string> = {
-  1: "single-hop",
-  2: "multi-hop",
-  3: "temporal",
-  4: "world-knowledge",
+  1: "multi-hop",
+  2: "temporal",
+  3: "world-knowledge",
+  4: "single-hop",
   5: "adversarial",
 }
 
