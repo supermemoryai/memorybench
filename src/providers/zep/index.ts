@@ -81,6 +81,21 @@ const ZEP_ENTITY_TYPES = {
 
 export class ZepProvider implements Provider {
   name = "zep"
+  capabilities = {
+    deterministicExternalIds: false,
+    batchUpload: true,
+    documentDependencies: false,
+    ingestionMetadataFilters: false,
+    searchMetadataFilters: false,
+    searchModes: ["memories"] as const,
+    reranking: true,
+    queryRewriting: false,
+    remoteClear: true,
+    readinessStates: true,
+    mediaIngestion: false,
+    durableLocalPersistence: true,
+    splitPhaseSafe: true,
+  }
   prompts = ZEP_PROMPTS
   concurrency = {
     default: 10,

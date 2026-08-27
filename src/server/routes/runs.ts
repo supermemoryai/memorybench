@@ -10,6 +10,10 @@ import type { BenchmarkName } from "../../types/benchmark"
 import type { PhaseId, SamplingConfig } from "../../types/checkpoint"
 import type { ConcurrencyConfig } from "../../types/concurrency"
 import { getPhasesFromPhase, PHASE_ORDER } from "../../types/checkpoint"
+import {
+  handleBuildAwareInspectionRoutes,
+  listBuildAwareRunSummaries,
+} from "./build-aware-inspection"
 
 const checkpointManager = new CheckpointManager()
 
@@ -34,10 +38,15 @@ export async function handleRunsRoutes(req: Request, url: URL): Promise<Response
   const method = req.method
   const pathname = url.pathname
 
+  // Build-aware LongMemEval-V2 runs use a separate, read-only inspection surface.
+  // Legacy routes below remain unchanged when no build-aware checkpoint exists.
+  const buildAwareResponse = await handleBuildAwareInspectionRoutes(req, url)
+  if (buildAwareResponse) return buildAwareResponse
+
   // GET /api/runs - List all runs
   if (method === "GET" && pathname === "/api/runs") {
     const runs = checkpointManager.listRuns()
-    const runDetails = runs
+    const legacyRunDetails = runs
       .map((runId) => {
         const checkpoint = checkpointManager.load(runId)
         if (!checkpoint) return null
@@ -68,7 +77,9 @@ export async function handleRunsRoutes(req: Request, url: URL): Promise<Response
         }
       })
       .filter(Boolean)
-      .sort((a: any, b: any) => (b.createdAt || "").localeCompare(a.createdAt || ""))
+    const runDetails = [...legacyRunDetails, ...(await listBuildAwareRunSummaries())].sort(
+      (a: any, b: any) => (b.createdAt || "").localeCompare(a.createdAt || "")
+    )
 
     return json(runDetails)
   }

@@ -5,6 +5,7 @@ export type RunState = {
   status: "running" | "stopping"
   startedAt: string
   benchmark?: string
+  abortController?: AbortController
 }
 
 // In-memory map of active runs
@@ -21,15 +22,23 @@ export function requestStop(runId: string): boolean {
   const state = activeRuns.get(runId)
   if (!state) return false
   state.status = "stopping"
+  if (!state.abortController?.signal.aborted) {
+    state.abortController?.abort(new Error("Run stopped by user"))
+  }
   return true
 }
 
 // Start tracking a run
-export function startRun(runId: string, benchmark?: string): void {
+export function startRun(
+  runId: string,
+  benchmark?: string,
+  abortController?: AbortController
+): void {
   activeRuns.set(runId, {
     status: "running",
     startedAt: new Date().toISOString(),
     benchmark,
+    abortController,
   })
 }
 

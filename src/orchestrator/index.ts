@@ -366,3 +366,5 @@ export class Orchestrator {
 
 export const orchestrator = new Orchestrator()
 export { CheckpointManager } from "./checkpoint"
+export { BuildAwareRunStore } from "./build-aware-run-store"
+export { LongMemEvalV2Runner, inspectLongMemEvalV2Run } from "./longmemeval-v2"

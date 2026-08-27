@@ -1,4 +1,4 @@
-import { mkdir, readdir, readFile, writeFile, rm } from "node:fs/promises"
+import { mkdir, readdir, readFile, writeFile, rename, rm, unlink } from "node:fs/promises"
 import { join } from "node:path"
 import { createOpenAI } from "@ai-sdk/openai"
 import type {
@@ -8,6 +8,7 @@ import type {
   IngestResult,
   SearchOptions,
   IndexingProgressCallback,
+  BuildAwareSessionBridge,
 } from "../../types/provider"
 import type { UnifiedSession } from "../../types/unified"
 import { logger } from "../../utils/logger"
@@ -33,7 +34,10 @@ function tokenize(text: string): string[] {
  * Returns a score between 0 and 1 representing the fraction of query terms found,
  * with a small frequency bonus for repeated matches.
  */
-function scoreDocument(queryTerms: string[], docText: string): { score: number; matchCount: number } {
+function scoreDocument(
+  queryTerms: string[],
+  docText: string
+): { score: number; matchCount: number } {
   if (queryTerms.length === 0) return { score: 0, matchCount: 0 }
 
   const docLower = docText.toLowerCase()
@@ -75,8 +79,23 @@ function scoreDocument(queryTerms: string[], docText: string): { score: number; 
  * This represents the MEMORY.md approach: use an LLM to extract key facts, preferences,
  * events, and relationships from conversations, then store them as searchable markdown.
  */
-export class FilesystemProvider implements Provider {
+export class FilesystemProvider implements Provider, BuildAwareSessionBridge {
   name = "filesystem"
+  capabilities = {
+    deterministicExternalIds: true,
+    batchUpload: false,
+    documentDependencies: false,
+    ingestionMetadataFilters: false,
+    searchMetadataFilters: false,
+    searchModes: ["memories"] as const,
+    reranking: false,
+    queryRewriting: false,
+    remoteClear: true,
+    readinessStates: true,
+    mediaIngestion: false,
+    durableLocalPersistence: true,
+    splitPhaseSafe: true,
+  }
   prompts = FILESYSTEM_PROMPTS
   concurrency = {
     default: 50,
@@ -104,7 +123,8 @@ export class FilesystemProvider implements Provider {
     const documentIds: string[] = []
 
     for (const session of sessions) {
-      const extractedMemories = await extractMemories(this.openai, session)
+      const extractedMemories = await extractMemories(this.openai, session, options.signal)
+      if (options.signal?.aborted) throw options.signal.reason ?? new Error("Ingestion aborted")
 
       // Build a memory file with date header + extracted content
       const date =
@@ -116,7 +136,16 @@ export class FilesystemProvider implements Provider {
 
       const safeId = sanitizePath(session.sessionId)
       const filePath = join(memoriesDir, `${safeId}.md`)
-      await writeFile(filePath, content, "utf-8")
+      const sidecarPath = join(memoriesDir, `${safeId}.json`)
+      await atomicWrite(filePath, content)
+      await atomicWrite(
+        sidecarPath,
+        JSON.stringify({
+          schemaVersion: 1,
+          sessionId: session.sessionId,
+          metadata: session.metadata ?? {},
+        })
+      )
       documentIds.push(safeId)
       logger.debug(`Extracted and stored memories for session ${session.sessionId}`)
     }
@@ -197,6 +226,65 @@ export class FilesystemProvider implements Provider {
       logger.warn(`Failed to clear filesystem data: ${e}`)
     }
   }
+
+  async inspectSessions(
+    containerTag: string,
+    sessionIds: string[]
+  ): Promise<
+    Array<{
+      sessionId: string
+      status: "ready" | "absent"
+      metadata?: Record<string, unknown>
+    }>
+  > {
+    const memoriesDir = join(BASE_DIR, sanitizePath(containerTag), "memories")
+    return Promise.all(
+      sessionIds.map(async (sessionId) => {
+        try {
+          const safeId = sanitizePath(sessionId)
+          const [content, rawSidecar] = await Promise.all([
+            readFile(join(memoriesDir, `${safeId}.md`), "utf8"),
+            readFile(join(memoriesDir, `${safeId}.json`), "utf8"),
+          ])
+          const sidecar = JSON.parse(rawSidecar) as {
+            schemaVersion?: number
+            sessionId?: string
+            metadata?: Record<string, unknown>
+          }
+          if (
+            !content.trim() ||
+            sidecar.schemaVersion !== 1 ||
+            sidecar.sessionId !== sessionId ||
+            !sidecar.metadata
+          ) {
+            return { sessionId, status: "absent" as const }
+          }
+          return { sessionId, status: "ready" as const, metadata: sidecar.metadata }
+        } catch {
+          return { sessionId, status: "absent" as const }
+        }
+      })
+    )
+  }
+
+  async deleteSessions(containerTag: string, sessionIds: string[]): Promise<void> {
+    const memoriesDir = join(BASE_DIR, sanitizePath(containerTag), "memories")
+    await Promise.all(
+      sessionIds.flatMap((sessionId) => {
+        const safeId = sanitizePath(sessionId)
+        return [
+          unlink(join(memoriesDir, `${safeId}.md`)).catch(() => undefined),
+          unlink(join(memoriesDir, `${safeId}.json`)).catch(() => undefined),
+        ]
+      })
+    )
+  }
+}
+
+async function atomicWrite(path: string, content: string): Promise<void> {
+  const temporary = `${path}.${process.pid}.${crypto.randomUUID()}.tmp`
+  await writeFile(temporary, content, "utf8")
+  await rename(temporary, path)
 }
 
 /** Sanitize a string for safe use as a filesystem path component */

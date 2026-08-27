@@ -7,6 +7,7 @@ import { statusCommand } from "./commands/status"
 import { listQuestionsCommand } from "./commands/list-questions"
 import { showFailuresCommand } from "./commands/show-failures"
 import { serveCommand } from "./commands/serve"
+import { longMemEvalV2Command } from "./commands/longmemeval-v2"
 import { getAvailableProviders } from "../providers"
 import { getAvailableBenchmarks } from "../benchmarks"
 import { listModelsByProvider, MODEL_ALIASES, DEFAULT_ANSWERING_MODEL } from "../utils/models"
@@ -27,6 +28,7 @@ Commands:
   show-failures   Show failed questions from a run with full debugging data
   status          Check run status
   serve           Start the web UI server
+  lme-v2          Build-aware LongMemEval-V2 workflow
   help            Show help (use 'help providers', 'help models', 'help benchmarks' for details)
 
 Examples:
@@ -189,6 +191,10 @@ export async function cli(args: string[]): Promise<void> {
       break
     case "serve":
       await serveCommand(commandArgs)
+      break
+    case "lme-v2":
+    case "longmemeval-v2":
+      await longMemEvalV2Command(commandArgs)
       break
     case "help":
     case "--help":

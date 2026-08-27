@@ -18,6 +18,7 @@ import {
   type Provider,
 } from "@/lib/api"
 import { SingleSelect } from "@/components/single-select"
+import { LongMemEvalV2Launcher } from "@/components/longmemeval-v2-launcher"
 
 type Tab = "new" | "advanced"
 
@@ -323,8 +324,22 @@ export default function NewRunPage() {
   const allModels = [...Object.values(models).flat()] as { alias: string; displayName: string }[]
 
   const providerOptions = providers.map((p) => ({ value: p.name, label: p.displayName }))
-  const benchmarkOptions = benchmarks.map((b) => ({ value: b.name, label: b.displayName }))
+  const benchmarkOptions = [
+    ...benchmarks.map((b) => ({ value: b.name, label: b.displayName })),
+    ...(!benchmarks.some((benchmark) => benchmark.name === "longmemeval-v2")
+      ? [{ value: "longmemeval-v2", label: "LongMemEval-V2" }]
+      : []),
+  ]
   const modelOptions = allModels.map((m) => ({ value: m.alias, label: m.displayName || m.alias }))
+  const openAIModelOptions = (
+    (models.openai ?? []) as Array<{
+      alias: string
+      displayName?: string
+    }>
+  ).map((model) => ({
+    value: model.alias,
+    label: model.displayName || model.alias,
+  }))
 
   const runOptions = completedRuns.map((r) => ({
     value: r.runId,
@@ -341,7 +356,9 @@ export default function NewRunPage() {
   }
 
   return (
-    <div className="max-w-2xl animate-fade-in">
+    <div
+      className={`${activeTab === "new" && form.benchmark === "longmemeval-v2" ? "max-w-3xl" : "max-w-2xl"} animate-fade-in`}
+    >
       <div className="flex items-center gap-2 text-sm text-text-secondary mb-4">
         <Link href="/runs" className="hover:text-text-primary">
           Runs
@@ -395,7 +412,28 @@ export default function NewRunPage() {
         </button>
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-6">
+      {activeTab === "new" && form.benchmark === "longmemeval-v2" && (
+        <div className="space-y-6">
+          <div>
+            <label className="block text-sm font-medium text-text-primary mb-2">Benchmark</label>
+            <SingleSelect
+              label="Select benchmark"
+              options={benchmarkOptions}
+              selected={form.benchmark}
+              onChange={(value) => setForm({ ...form, benchmark: value })}
+              placeholder="Select benchmark"
+            />
+          </div>
+          <LongMemEvalV2Launcher
+            modelOptions={openAIModelOptions}
+            onStarted={(runId) => router.push(`/runs/${encodeURIComponent(runId)}`)}
+          />
+        </div>
+      )}
+      <form
+        onSubmit={handleSubmit}
+        className={`space-y-6 ${activeTab === "new" && form.benchmark === "longmemeval-v2" ? "hidden" : ""}`}
+      >
         {activeTab === "advanced" && (
           <>
             <p className="text-sm text-text-secondary">
@@ -833,7 +871,13 @@ export default function NewRunPage() {
                   label="Select benchmark"
                   options={benchmarkOptions}
                   selected={form.benchmark}
-                  onChange={(value) => setForm({ ...form, benchmark: value })}
+                  onChange={(value) =>
+                    setForm({
+                      ...form,
+                      benchmark: value,
+                      provider: value === "longmemeval-v2" ? "supermemory" : form.provider,
+                    })
+                  }
                   placeholder="Select benchmark"
                 />
               </div>

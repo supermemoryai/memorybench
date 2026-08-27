@@ -13,6 +13,21 @@ import { SUPERMEMORY_PROMPTS } from "./prompts"
 
 export class SupermemoryProvider implements Provider {
   name = "supermemory"
+  capabilities = {
+    deterministicExternalIds: false,
+    batchUpload: false,
+    documentDependencies: false,
+    ingestionMetadataFilters: false,
+    searchMetadataFilters: false,
+    searchModes: ["hybrid"] as const,
+    reranking: false,
+    queryRewriting: false,
+    remoteClear: false,
+    readinessStates: true,
+    mediaIngestion: false,
+    durableLocalPersistence: true,
+    splitPhaseSafe: true,
+  }
   prompts = SUPERMEMORY_PROMPTS
   concurrency = {
     default: 50,
@@ -125,11 +140,11 @@ export class SupermemoryProvider implements Provider {
       containerTag: options.containerTag,
       limit: options.limit ?? 30,
       threshold: options.threshold || 0.3,
-			searchMode: "hybrid",
-			include: {
-				summaries: true,
-				chunks: true
-      }
+      searchMode: "hybrid",
+      include: {
+        summaries: true,
+        chunks: true,
+      },
     })
 
     return response.results || []

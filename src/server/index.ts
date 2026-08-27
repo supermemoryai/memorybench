@@ -1,4 +1,5 @@
 import { handleRunsRoutes } from "./routes/runs"
+import { createLongMemEvalV2ControlHandler } from "./routes/longmemeval-v2-control"
 import { handleBenchmarksRoutes } from "./routes/benchmarks"
 import { handleLeaderboardRoutes } from "./routes/leaderboard"
 import { handleCompareRoutes } from "./routes/compare"
@@ -21,6 +22,9 @@ const CORS_HEADERS = {
 }
 
 export const wsManager = new WebSocketManager()
+const handleLongMemEvalV2ControlRoutes = createLongMemEvalV2ControlHandler({
+  broadcast: (message) => wsManager.broadcast(message),
+})
 
 export async function startServer(options: ServerOptions): Promise<void> {
   const { port, open = true } = options
@@ -47,7 +51,9 @@ export async function startServer(options: ServerOptions): Promise<void> {
       try {
         let response: Response | null = null
 
-        if (url.pathname.startsWith("/api/runs")) {
+        if (url.pathname.startsWith("/api/runs-v2")) {
+          response = await handleLongMemEvalV2ControlRoutes(req, url)
+        } else if (url.pathname.startsWith("/api/runs")) {
           response = await handleRunsRoutes(req, url)
         } else if (url.pathname.startsWith("/api/compare")) {
           response = await handleCompareRoutes(req, url)

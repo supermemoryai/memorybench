@@ -70,7 +70,8 @@ Rules:
  */
 export async function extractMemories(
   openai: ReturnType<typeof createOpenAI>,
-  session: UnifiedSession
+  session: UnifiedSession,
+  signal?: AbortSignal
 ): Promise<string> {
   const prompt = buildExtractionPrompt(session)
 
@@ -79,6 +80,7 @@ export async function extractMemories(
     prompt,
     maxTokens: 2000,
     temperature: 0,
+    abortSignal: signal,
   }
 
   const { text } = await generateText(params as Parameters<typeof generateText>[0])

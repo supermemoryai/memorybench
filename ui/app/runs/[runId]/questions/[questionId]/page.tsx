@@ -4,8 +4,9 @@ import { useState, useEffect } from "react"
 import Link from "next/link"
 import { useParams } from "next/navigation"
 import { Highlight, themes } from "prism-react-renderer"
-import { getQuestion } from "@/lib/api"
+import { getQuestion, isBuildAwareQuestionDetail } from "@/lib/api"
 import { cn } from "@/lib/utils"
+import { BuildAwareQuestionInspection } from "@/components/build-aware-question-inspection"
 
 export default function QuestionDetailPage() {
   const params = useParams()
@@ -49,6 +50,10 @@ export default function QuestionDetailPage() {
         </Link>
       </div>
     )
+  }
+
+  if (isBuildAwareQuestionDetail(question)) {
+    return <BuildAwareQuestionInspection runId={runId} question={question} />
   }
 
   const isCorrect = question.phases?.evaluate?.label === "correct"

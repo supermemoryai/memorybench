@@ -3,10 +3,20 @@
 import { useState, useEffect, useRef, useCallback } from "react"
 import Link from "next/link"
 import { useParams, useSearchParams, useRouter } from "next/navigation"
-import { getRun, getRunReport, stopRun, startRun, type RunDetail } from "@/lib/api"
+import {
+  getRun,
+  getRunReport,
+  isBuildAwareRunDetail,
+  stopRun,
+  startRun,
+  type BuildAwareReport,
+  type BuildAwareRunDetail,
+  type RunDetail,
+} from "@/lib/api"
 import { formatDate, getStatusColor, cn } from "@/lib/utils"
 import { PhaseProgress } from "@/components/phase-progress"
 import { QuestionList } from "@/components/question-list"
+import { BuildAwareRunInspection } from "@/components/build-aware-run-inspection"
 import {
   StatsGrid,
   AccuracyByType,
@@ -30,7 +40,7 @@ export default function RunDetailPage() {
   const initialTab: Tab =
     tabFromUrl && ["overview", "results"].includes(tabFromUrl) ? tabFromUrl : "overview"
 
-  const [run, setRun] = useState<RunDetail | null>(null)
+  const [run, setRun] = useState<RunDetail | BuildAwareRunDetail | null>(null)
   const [report, setReport] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -52,7 +62,7 @@ export default function RunDetailPage() {
   const [continuing, setContinuing] = useState(false)
 
   async function handleContinue() {
-    if (continuing || !run) return
+    if (continuing || !run || isBuildAwareRunDetail(run)) return
     setContinuing(true)
     try {
       await startRun({
@@ -164,6 +174,16 @@ export default function RunDetailPage() {
           Back to runs
         </Link>
       </div>
+    )
+  }
+
+  if (isBuildAwareRunDetail(run)) {
+    return (
+      <BuildAwareRunInspection
+        run={run}
+        report={report as BuildAwareReport | null}
+        onRefresh={refreshData}
+      />
     )
   }
 

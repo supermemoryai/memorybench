@@ -41,6 +41,28 @@ cp .env.example .env.local  # Add your API keys
 bun run src/index.ts run -p supermemory -b locomo
 ```
 
+LongMemEval-V2 uses the build-aware workflow because multiple questions share
+the same exact haystack and require multimodal, benchmark-owned evaluation:
+
+```bash
+bun run src/index.ts lme-v2 --help
+bun run src/index.ts lme-v2 dry-run \
+  --run-id lme-v2-dry-run \
+  --dataset data/benchmarks/longmemeval-v2
+```
+
+See [docs/LONGMEMEVAL_V2.md](docs/LONGMEMEVAL_V2.md) for the architecture,
+download/preparation commands, MemoryBuild semantics, live-service preflight,
+resume behavior, and validation status.
+
+To use the browser workflow, run `bun run src/index.ts serve --no-open`, open
+**New Run**, and choose **LongMemEval-V2** from the **Benchmark** dropdown. Its
+guided form defaults to an offline Plan and exposes exact-haystack limits,
+reader/evaluator models, a V2 memory-provider dropdown, and advanced
+bounded-ingestion controls. Supermemory, Filesystem, and local RAG support live
+V2 stages; Mem0 and Zep are clearly labelled Plan-only until their exact
+interruption/reconciliation contracts are implemented.
+
 ## Configuration
 
 ```bash

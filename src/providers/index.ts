@@ -40,3 +40,5 @@ export function getProviderInfo(name: ProviderName): {
 }
 
 export { SupermemoryProvider, Mem0Provider, ZepProvider, FilesystemProvider, RAGProvider }
+export * from "./supermemory/advanced"
+export * from "./build-aware"

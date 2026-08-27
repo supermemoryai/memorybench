@@ -53,6 +53,21 @@ const CUSTOM_INSTRUCTIONS = `Generate personal memories that follow these guidel
 
 export class Mem0Provider implements Provider {
   name = "mem0"
+  capabilities = {
+    deterministicExternalIds: false,
+    batchUpload: false,
+    documentDependencies: false,
+    ingestionMetadataFilters: false,
+    searchMetadataFilters: false,
+    searchModes: ["memories"] as const,
+    reranking: false,
+    queryRewriting: false,
+    remoteClear: true,
+    readinessStates: true,
+    mediaIngestion: false,
+    durableLocalPersistence: true,
+    splitPhaseSafe: true,
+  }
   prompts = MEM0_PROMPTS
   concurrency = {
     default: 50,

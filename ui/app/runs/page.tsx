@@ -3,7 +3,15 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { getRuns, deleteRun, stopRun, startRun, addToLeaderboard, type RunSummary } from "@/lib/api"
+import {
+  getRuns,
+  deleteRun,
+  stopRun,
+  startRun,
+  addToLeaderboard,
+  stopLongMemEvalV2Run,
+  type RunSummary,
+} from "@/lib/api"
 import { formatDate, getStatusColor, cn } from "@/lib/utils"
 import { FilterBar } from "@/components/filter-bar"
 import { DataTable, type Column } from "@/components/data-table"
@@ -29,7 +37,11 @@ export default function RunsPage() {
   // Check if any run is in progress
   const hasRunningRuns = useMemo(() => {
     return runs.some(
-      (r) => r.status === "running" || r.status === "pending" || r.status === "initializing"
+      (r) =>
+        r.status === "running" ||
+        r.status === "pending" ||
+        r.status === "initializing" ||
+        r.status === "stopping"
     )
   }, [runs])
 
@@ -91,9 +103,10 @@ export default function RunsPage() {
     }
   }
 
-  async function handleTerminate(runId: string) {
+  async function handleTerminate(run: RunSummary) {
     try {
-      await stopRun(runId)
+      if (run.readOnlyInspection) await stopLongMemEvalV2Run(run.runId)
+      else await stopRun(run.runId)
       await refreshRuns()
     } catch (e) {
       alert(e instanceof Error ? e.message : "Failed to terminate run")
@@ -274,18 +287,40 @@ export default function RunsPage() {
         header: "",
         width: "40px",
         align: "right",
-        render: (run) => (
-          <RunActionsMenu
-            runId={run.runId}
-            provider={run.provider}
-            benchmark={run.benchmark}
-            status={run.status}
-            onAddToLeaderboard={(data) => handleAddToLeaderboard(run.runId, data)}
-            onDelete={() => handleDelete(run.runId)}
-            onTerminate={() => handleTerminate(run.runId)}
-            onContinue={() => handleContinue(run)}
-          />
-        ),
+        render: (run) =>
+          run.readOnlyInspection ? (
+            <div className="flex items-center justify-end gap-2 text-xs">
+              <Link
+                href={`/runs/${encodeURIComponent(run.runId)}`}
+                className="text-accent hover:underline"
+              >
+                {["failed", "partial", "blocked"].includes(run.status)
+                  ? "inspect / resume"
+                  : "inspect"}
+              </Link>
+              {["running", "pending", "initializing", "stopping"].includes(run.status) && (
+                <button
+                  type="button"
+                  disabled={run.status === "stopping"}
+                  onClick={() => handleTerminate(run)}
+                  className="text-status-error hover:underline disabled:cursor-not-allowed disabled:text-text-muted"
+                >
+                  {run.status === "stopping" ? "stopping…" : "stop"}
+                </button>
+              )}
+            </div>
+          ) : (
+            <RunActionsMenu
+              runId={run.runId}
+              provider={run.provider}
+              benchmark={run.benchmark}
+              status={run.status}
+              onAddToLeaderboard={(data) => handleAddToLeaderboard(run.runId, data)}
+              onDelete={() => handleDelete(run.runId)}
+              onTerminate={() => handleTerminate(run)}
+              onContinue={() => handleContinue(run)}
+            />
+          ),
       },
     ],
     []

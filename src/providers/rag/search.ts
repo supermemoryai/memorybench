@@ -207,6 +207,12 @@ function addToBM25Index(index: BM25Index, chunkId: string, text: string): void {
   }
 }
 
+function buildBM25Index(chunks: Iterable<Chunk>): BM25Index {
+  const index = createBM25Index()
+  for (const chunk of chunks) addToBM25Index(index, chunk.id, chunk.content)
+  return index
+}
+
 function searchBM25(index: BM25Index, query: string): Map<string, number> {
   const queryTerms = tokenize(query)
   const scores = new Map<string, number>()
@@ -283,11 +289,40 @@ export class HybridSearchEngine {
 
     for (const chunk of chunks) {
       container.chunks.set(chunk.id, chunk)
-      addToBM25Index(container.bm25Index, chunk.id, chunk.content)
     }
+    // Rebuild instead of incrementally appending so deterministic upserts do
+    // not inflate BM25 document counts after a retry or resume.
+    container.bm25Index = buildBM25Index(container.chunks.values())
   }
 
-  search(containerTag: string, queryEmbedding: number[], query: string, limit: number): SearchResult[] {
+  replaceChunks(containerTag: string, chunks: Chunk[]): void {
+    const byId = new Map(chunks.map((chunk) => [chunk.id, chunk]))
+    this.containers.set(containerTag, {
+      chunks: byId,
+      bm25Index: buildBM25Index(byId.values()),
+    })
+  }
+
+  getChunks(containerTag: string): Chunk[] {
+    return [...(this.containers.get(containerTag)?.chunks.values() ?? [])]
+  }
+
+  hasSession(containerTag: string, sessionId: string): boolean {
+    return this.getChunks(containerTag).some((chunk) => chunk.sessionId === sessionId)
+  }
+
+  removeSessions(containerTag: string, sessionIds: string[]): void {
+    const removed = new Set(sessionIds)
+    const kept = this.getChunks(containerTag).filter((chunk) => !removed.has(chunk.sessionId))
+    this.replaceChunks(containerTag, kept)
+  }
+
+  search(
+    containerTag: string,
+    queryEmbedding: number[],
+    query: string,
+    limit: number
+  ): SearchResult[] {
     const container = this.containers.get(containerTag)
     if (!container || container.chunks.size === 0) return []
 
@@ -334,7 +369,7 @@ export class HybridSearchEngine {
     }
 
     // Sort by hybrid score descending
-    hybridScores.sort((a, b) => b.score - a.score)
+    hybridScores.sort((a, b) => b.score - a.score || a.chunkId.localeCompare(b.chunkId))
 
     // Return top results
     return hybridScores.slice(0, limit).map((result) => {
