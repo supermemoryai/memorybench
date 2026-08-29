@@ -115,10 +115,12 @@ export async function runIngestPhase(
           status: "failed",
           error,
         })
-        logger.error(`Failed to ingest ${question.questionId}: ${error}`)
-        throw new Error(
-          `Ingest failed at ${question.questionId}: ${error}. Fix the issue and resume with the same run ID.`
-        )
+        // Continue the run: one bad question must not abort a multi-hour benchmark.
+        // The checkpoint carries the failure — indexing only picks up questions whose
+        // ingest completed, so failed ones are skipped downstream, and resume (which
+        // filters on status !== "completed") retries them under the same run ID.
+        logger.error(`Failed to ingest ${question.questionId}: ${error} (skipping, run continues)`)
+        return { questionId: question.questionId, durationMs: Date.now() - startTime }
       }
     },
   })

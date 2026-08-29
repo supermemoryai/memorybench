@@ -51,11 +51,35 @@ const CUSTOM_INSTRUCTIONS = `Generate personal memories that follow these guidel
 
 5. Format each memory as a paragraph with a clear narrative structure that captures the person's experience, challenges, and aspirations`
 
+/**
+ * Retry an async op with exponential backoff on mem0 rate-limit (429) errors.
+ * Non-rate-limit errors rethrow immediately.
+ */
+async function withRetry<T>(fn: () => Promise<T>, label: string, maxAttempts = 6): Promise<T> {
+  let delayMs = 1000
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await fn()
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e)
+      const isRateLimit = /rate limit|too many|429|too frequently/i.test(msg)
+      if (!isRateLimit || attempt >= maxAttempts) throw e
+      logger.warn(`mem0 ${label}: rate-limited (attempt ${attempt}/${maxAttempts}), backing off ${delayMs}ms`)
+      await new Promise((r) => setTimeout(r, delayMs))
+      delayMs = Math.min(delayMs * 2, 30000)
+    }
+  }
+}
+
 export class Mem0Provider implements Provider {
   name = "mem0"
   prompts = MEM0_PROMPTS
+  // mem0's paid tier raises the monthly quota but keeps a per-second RPS cap;
+  // ingest fans out one add per session, so cap it low and lean on withRetry.
   concurrency = {
     default: 50,
+    ingest: 8,
+    search: 20,
   }
   private client: MemoryClient | null = null
   private apiKey: string = ""
@@ -81,10 +105,15 @@ export class Mem0Provider implements Provider {
     const eventIds: string[] = []
 
     for (const session of sessions) {
-      const messages = session.messages.map((m) => ({
-        role: m.role,
-        content: m.content,
-      }))
+      const messages = session.messages
+        .filter((m) => m.content && m.content.trim().length > 0)
+        .map((m) => ({
+          role: m.role,
+          content: m.content,
+        }))
+
+      // mem0 rejects empty adds; skip sessions with no usable messages.
+      if (messages.length === 0) continue
 
       const addOptions: MemoryOptions = {
         user_id: options.containerTag,
@@ -99,7 +128,10 @@ export class Mem0Provider implements Provider {
         },
       }
 
-      const result = (await this.client.add(messages, addOptions)) as Array<{
+      const result = (await withRetry(
+        () => this.client!.add(messages, addOptions),
+        `add ${session.sessionId}`
+      )) as Array<{
         event_id?: string
       }>
       for (const event of result) {
@@ -182,7 +214,10 @@ export class Mem0Provider implements Provider {
       output_format: "v1.1",
     }
 
-    const response = await this.client.search(query, searchOptions)
+    const response = await withRetry(
+      () => this.client!.search(query, searchOptions),
+      "search"
+    )
 
     const res = response as { results?: unknown[] }
     return res.results ?? []

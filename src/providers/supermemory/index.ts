@@ -11,13 +11,38 @@ import type { UnifiedSession } from "../../types/unified"
 import { logger } from "../../utils/logger"
 import { SUPERMEMORY_PROMPTS } from "./prompts"
 
+/**
+ * Retry an async op with backoff on supermemory rate-limit (429) errors.
+ * Honors the server's retryAfterSeconds when present; else exponential.
+ * Non-rate-limit errors rethrow immediately.
+ */
+async function withRetry<T>(fn: () => Promise<T>, label: string, maxAttempts = 6): Promise<T> {
+  let delayMs = 1000
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await fn()
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e)
+      const isRateLimit = /rate limit|too many|429|rate_limited/i.test(msg)
+      if (!isRateLimit || attempt >= maxAttempts) throw e
+      const retryAfter = msg.match(/retryafterseconds"?\s*:?\s*(\d+)/i)
+      const waitMs = retryAfter ? (parseInt(retryAfter[1], 10) + 1) * 1000 : delayMs
+      logger.warn(`supermemory ${label}: rate-limited (attempt ${attempt}/${maxAttempts}), backing off ${waitMs}ms`)
+      await new Promise((r) => setTimeout(r, waitMs))
+      delayMs = Math.min(delayMs * 2, 30000)
+    }
+  }
+}
+
 export class SupermemoryProvider implements Provider {
   name = "supermemory"
   prompts = SUPERMEMORY_PROMPTS
+  // Free/standard tier enforces a per-key RPS cap (429 with retryAfterSeconds);
+  // keep ingest modest and lean on withRetry.
   concurrency = {
     default: 50,
-    ingest: 100,
-    indexing: 200,
+    ingest: 8,
+    indexing: 50,
   }
   private client: Supermemory | null = null
 
@@ -44,14 +69,18 @@ export class SupermemoryProvider implements Provider {
         ? `Here is the date the following session took place: ${formattedDate}\n\nHere is the session as a stringified JSON:\n${sessionStr}`
         : `Here is the session as a stringified JSON:\n${sessionStr}`
 
-      const response = await this.client.add({
-        content,
-        containerTag: options.containerTag,
-        metadata: {
-          sessionId: session.sessionId,
-          ...(isoDate ? { date: isoDate } : {}),
-        },
-      })
+      const response = await withRetry(
+        () =>
+          this.client!.add({
+            content,
+            containerTag: options.containerTag,
+            metadata: {
+              sessionId: session.sessionId,
+              ...(isoDate ? { date: isoDate } : {}),
+            },
+          }),
+        `add ${session.sessionId}`
+      )
       documentIds.push(response.id)
       logger.debug(`Ingested session ${session.sessionId}`)
     }
@@ -120,17 +149,21 @@ export class SupermemoryProvider implements Provider {
   async search(query: string, options: SearchOptions): Promise<unknown[]> {
     if (!this.client) throw new Error("Provider not initialized")
 
-    const response = await this.client.search.memories({
-      q: query,
-      containerTag: options.containerTag,
-      limit: options.limit ?? 30,
-      threshold: options.threshold || 0.3,
-			searchMode: "hybrid",
-			include: {
-				summaries: true,
-				chunks: true
-      }
-    })
+    const response = await withRetry(
+      () =>
+        this.client!.search.memories({
+          q: query,
+          containerTag: options.containerTag,
+          limit: options.limit ?? 30,
+          threshold: options.threshold || 0.3,
+          searchMode: "hybrid",
+          include: {
+            summaries: true,
+            chunks: true,
+          },
+        }),
+      "search"
+    )
 
     return response.results || []
   }
