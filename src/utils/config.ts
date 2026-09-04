@@ -6,6 +6,8 @@ export interface Config {
   openaiApiKey: string
   anthropicApiKey: string
   googleApiKey: string
+  aricordBaseUrl: string
+  aricordApiToken: string
 }
 
 export const config: Config = {
@@ -16,10 +18,18 @@ export const config: Config = {
   openaiApiKey: process.env.OPENAI_API_KEY || "",
   anthropicApiKey: process.env.ANTHROPIC_API_KEY || "",
   googleApiKey: process.env.GOOGLE_API_KEY || "",
+  // ARICORD runs locally, so a base URL rather than a hosted API key.
+  // AME_* stays readable: bench scripts written before the rename keep working.
+  aricordBaseUrl: process.env.ARICORD_BASE_URL || process.env.AME_BASE_URL || "http://localhost:3100",
+  aricordApiToken: process.env.ARICORD_API_TOKEN || process.env.AME_API_TOKEN || "",
 }
 
 export function getProviderConfig(provider: string): { apiKey: string; baseUrl?: string } {
   switch (provider) {
+    case "aricord":
+      // `|| "none"` so a token-less local run (ARICORD_AUTH_DISABLED=true)
+      // still satisfies callers that require a non-empty apiKey.
+      return { apiKey: config.aricordApiToken || "none", baseUrl: config.aricordBaseUrl }
     case "supermemory":
       return { apiKey: config.supermemoryApiKey, baseUrl: config.supermemoryBaseUrl }
     case "mem0":

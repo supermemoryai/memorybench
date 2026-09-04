@@ -225,6 +225,95 @@ export const MODEL_CONFIGS: Record<string, ModelConfig> = {
     maxTokensParam: "maxTokens",
     defaultMaxTokens: 1000,
   },
+
+  // --- Open-weight candidates routed through OpenRouter (OPENAI_BASE_URL) ---
+  // These are reasoning models: they emit reasoning tokens before content, and
+  // the 1000-token default fallback is spent thinking, so `content` comes back
+  // null and the answer phase counts a failure that aborts the whole run.
+  // Verified directly: qwen3.8-27b at max_tokens=12 returns finish_reason
+  // "length" with content null; at 1200 it returns "stop" and a real answer.
+  // Temperature is rejected by this family, hence supportsTemperature: false.
+  "deepseek/deepseek-v4-flash-0731": {
+    id: "deepseek/deepseek-v4-flash-0731",
+    provider: "openai",
+    displayName: "DeepSeek V4 Flash",
+    supportsTemperature: false,
+    defaultTemperature: 1,
+    maxTokensParam: "maxTokens",
+    defaultMaxTokens: 4000,
+  },
+  "z-ai/glm-5.3-flash": {
+    id: "z-ai/glm-5.3-flash",
+    provider: "openai",
+    displayName: "GLM 5.3 Flash",
+    supportsTemperature: false,
+    defaultTemperature: 1,
+    maxTokensParam: "maxTokens",
+    defaultMaxTokens: 4000,
+  },
+  "z-ai/glm-4.7-flash": {
+    id: "z-ai/glm-4.7-flash",
+    provider: "openai",
+    displayName: "GLM 4.7 Flash",
+    supportsTemperature: false,
+    defaultTemperature: 1,
+    maxTokensParam: "maxTokens",
+    defaultMaxTokens: 4000,
+  },
+  "qwen/qwen3.8-flash": {
+    id: "qwen/qwen3.8-flash",
+    provider: "openai",
+    displayName: "Qwen3.8 Flash",
+    supportsTemperature: false,
+    defaultTemperature: 1,
+    maxTokensParam: "maxTokens",
+    defaultMaxTokens: 4000,
+  },
+  "qwen/qwen3.8-27b": {
+    id: "qwen/qwen3.8-27b",
+    provider: "openai",
+    displayName: "Qwen3.8 27B",
+    supportsTemperature: false,
+    defaultTemperature: 1,
+    maxTokensParam: "maxTokens",
+    defaultMaxTokens: 4000,
+  },
+  "openai/gpt-oss-120b": {
+    id: "openai/gpt-oss-120b",
+    provider: "openai",
+    displayName: "GPT-OSS 120B",
+    supportsTemperature: false,
+    defaultTemperature: 1,
+    maxTokensParam: "maxTokens",
+    defaultMaxTokens: 4000,
+  },
+  "z-ai/glm-5.2": {
+    id: "z-ai/glm-5.2",
+    provider: "openai",
+    displayName: "GLM 5.2",
+    supportsTemperature: false,
+    defaultTemperature: 1,
+    maxTokensParam: "maxTokens",
+    defaultMaxTokens: 4000,
+  },
+  "z-ai/glm-5.3": {
+    id: "z-ai/glm-5.3",
+    provider: "openai",
+    displayName: "GLM 5.3",
+    supportsTemperature: false,
+    defaultTemperature: 1,
+    maxTokensParam: "maxTokens",
+    defaultMaxTokens: 4000,
+  },
+  "moonshotai/kimi-k3": {
+    id: "moonshotai/kimi-k3",
+    provider: "openai",
+    displayName: "Kimi K3",
+    supportsTemperature: false,
+    defaultTemperature: 1,
+    maxTokensParam: "maxTokens",
+    defaultMaxTokens: 4000,
+  },
 }
 
 export const DEFAULT_ANSWERING_MODEL = "gpt-4o"

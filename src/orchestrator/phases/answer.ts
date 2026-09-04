@@ -30,7 +30,10 @@ function getAnsweringModel(modelAlias: string): {
   switch (modelConfig.provider) {
     case "openai":
       return {
-        client: createOpenAI({ apiKey: config.openaiApiKey }),
+        client: createOpenAI({
+          apiKey: config.openaiApiKey,
+          ...(process.env.OPENAI_BASE_URL ? { baseURL: process.env.OPENAI_BASE_URL } : {}),
+        }),
         modelConfig,
       }
     case "anthropic":
