@@ -250,7 +250,18 @@ export class Orchestrator {
     }
 
     const provider = createProvider(providerName)
-    await provider.initialize(getProviderConfig(providerName))
+    // Only phases that actually reach the memory backend need it up. `-f answer`
+    // replays bundles already stored in the checkpoint, so requiring a live
+    // provider there forces a machine to stay running — and paid for — purely to
+    // answer a health check it is never asked anything else.
+    const NEEDS_PROVIDER = ["ingest", "indexing", "search"] as const
+    if (NEEDS_PROVIDER.some((needed) => phases.includes(needed))) {
+      await provider.initialize(getProviderConfig(providerName))
+    } else {
+      logger.info(
+        `Skipping provider initialization: no phase in this run reaches ${providerName}`
+      )
+    }
 
     if (phases.includes("ingest")) {
       await runIngestPhase(
