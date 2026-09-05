@@ -40,6 +40,9 @@ export interface RetrievalMetrics {
   k: number
   relevantRetrieved: number
   totalRelevant: number
+  /** True when MEMORYBENCH_RETRIEVAL_METRICS=off — the zeros mean
+   *  "not measured", not "scored zero". */
+  skipped?: boolean
 }
 
 export interface RetrievalAggregates {

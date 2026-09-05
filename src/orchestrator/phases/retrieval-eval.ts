@@ -108,6 +108,20 @@ export async function calculateRetrievalMetrics(
     }
   }
 
+  // Judging the ten retrieved chunks costs far more than judging the answer:
+  // ~14 k tokens per question against a few hundred, so on gpt-4o it is around
+  // $0.035 a question — roughly $17 of a $18 full500, for metrics a
+  // retrieval-only harness computes for nothing. MEMORYBENCH_RETRIEVAL_METRICS
+  // controls it: "off" skips the call and returns zeros flagged as unmeasured,
+  // anything else is treated as a model id to use instead of the judge's.
+  const mode = process.env.MEMORYBENCH_RETRIEVAL_METRICS?.trim()
+  if (mode === "off") {
+    return {
+      hitAtK: 0, precisionAtK: 0, recallAtK: 0, f1AtK: 0, mrr: 0, ndcg: 0,
+      k: 0, relevantRetrieved: 0, totalRelevant: 1, skipped: true,
+    }
+  }
+
   const relevanceResults = await evaluateAllChunks(model, question, groundTruth, resultsToEval)
 
   const relevanceScores = resultsToEval.map((_, i) => {
