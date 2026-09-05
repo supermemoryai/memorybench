@@ -22,8 +22,18 @@ export interface ConcurrentExecutionOptions<T, R> {
 
 export class ConcurrentExecutor {
   /**
-   * Execute tasks concurrently in batches with rate limiting
-   * Throws on first error (fail-fast), but ensures in-flight operations complete
+   * Run tasks with `concurrency` of them in flight at all times.
+   *
+   * This used to slice the items into batches of `concurrency` and await each
+   * batch before starting the next. A batch then costs the *slowest* of its
+   * members, not the average, and with a long tail that is brutal: the 500
+   * answers of a full500 have a median of 8.6 s but a p99 of 90 s, so batches
+   * of six took 45 minutes where the concurrency alone predicts twelve. A
+   * sliding window starts the next item the moment any one finishes.
+   *
+   * Semantics preserved: fail-fast (the first error still throws, and tasks
+   * already in flight are still allowed to finish), stop-on-request, per-task
+   * callbacks, and results in item order.
    */
   static async executeBatched<T, R>(options: ConcurrentExecutionOptions<T, R>): Promise<R[]> {
     const {
@@ -42,64 +52,58 @@ export class ConcurrentExecutor {
     if (items.length === 0) return []
     if (concurrency <= 0) throw new Error("Concurrency must be positive")
 
-    const batchSize = concurrency
-    const totalBatches = Math.ceil(items.length / batchSize)
-    const allResults: R[] = []
-
     logger.info(
-      `[${phaseName}] Processing ${items.length} items with concurrency ${concurrency} (${totalBatches} batches)`
+      `[${phaseName}] Processing ${items.length} items, ${concurrency} in flight`
     )
 
-    for (let batchIdx = 0; batchIdx < totalBatches; batchIdx++) {
-      if (shouldStop(runId)) {
-        logger.info(`[${phaseName}] Run ${runId} stopped by user`)
-        throw new Error(`Run stopped by user. Resume with the same run ID.`)
-      }
+    const results = new Array<R | undefined>(items.length)
+    let next = 0
+    let failure: Error | null = null
+    let stopped = false
+    // Rate limiting used to be a pause between batches. With no batches, the
+    // equivalent is a minimum spacing between task starts.
+    let nextStartAt = 0
 
-      const batchStart = batchIdx * batchSize
-      const batchEnd = Math.min(batchStart + batchSize, items.length)
-      const batch = items.slice(batchStart, batchEnd)
+    const worker = async (): Promise<void> => {
+      for (;;) {
+        if (failure || stopped) return
+        if (shouldStop(runId)) {
+          stopped = true
+          return
+        }
+        const index = next++
+        if (index >= items.length) return
 
-      onBatchStart?.(batchIdx, batch.length)
-
-      const batchPromises = batch.map(async (item, batchOffset) => {
-        const globalIndex = batchStart + batchOffset
-        const context: ConcurrentTaskContext<T> = {
-          item,
-          index: globalIndex,
-          total: items.length,
+        if (rateLimitMs > 0) {
+          const wait = nextStartAt - Date.now()
+          nextStartAt = Math.max(Date.now(), nextStartAt) + rateLimitMs
+          if (wait > 0) await new Promise((resolve) => setTimeout(resolve, wait))
         }
 
+        const context: ConcurrentTaskContext<T> = { item: items[index], index, total: items.length }
+        onBatchStart?.(index, 1)
         try {
           const result = await executeTask(context)
           onTaskComplete?.(context, result)
-          return { success: true as const, result, context }
+          results[index] = result
+          onBatchComplete?.(index, [result])
         } catch (error) {
           const err = error instanceof Error ? error : new Error(String(error))
           onError?.(context, err)
-          return { success: false as const, error: err, context }
+          // Stop handing out new work; workers already inside executeTask run
+          // to completion before Promise.all below resolves.
+          if (!failure) failure = err
         }
-      })
-
-      const batchResults = await Promise.all(batchPromises)
-
-      const firstError = batchResults.find((r) => !r.success)
-      if (firstError && !firstError.success) {
-        throw firstError.error
-      }
-
-      const successfulResults = batchResults.filter((r) => r.success).map((r) => r.result as R)
-
-      allResults.push(...successfulResults)
-      onBatchComplete?.(batchIdx, successfulResults)
-
-      if (batchIdx < totalBatches - 1 && rateLimitMs > 0) {
-        logger.debug(`[${phaseName}] Waiting ${rateLimitMs}ms before next batch`)
-        await new Promise((resolve) => setTimeout(resolve, rateLimitMs))
       }
     }
 
-    return allResults
+    await Promise.all(
+      Array.from({ length: Math.min(concurrency, items.length) }, () => worker())
+    )
+
+    if (failure) throw failure
+    if (stopped) throw new Error(`Run stopped by user. Resume with the same run ID.`)
+    return results.filter((r): r is R => r !== undefined)
   }
 
   /**
