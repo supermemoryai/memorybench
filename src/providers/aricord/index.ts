@@ -363,13 +363,38 @@ export class AricordProvider implements Provider {
     let lastSig = '';
     while (Date.now() - start < MAX_WAIT_MS) {
       const stats = await this.get<{
-        queue?: { depth?: number };
+        queue_pending?: number;
         chunks_without_embedding?: number;
         extractions_pending?: number;
+        extraction_failures?: number;
       }>('/stats');
-      const depth = stats.queue?.depth ?? 0;
+      // `queue_pending`, not `queue.depth`. ARICORD's /stats has always returned a
+      // flat `queue_pending`; `stats.queue?.depth` was undefined and `?? 0` made
+      // this condition permanently true, so the embedding-queue check did nothing
+      // for the whole life of this provider — including the published full500.
+      //
+      // Harmless there, as it happens: `chunks_without_embedding` reads storage
+      // rather than a process counter, and the audit note above says the queue
+      // counter is the less trustworthy of the two. The full500 wait lasted 2.42 h
+      // against a recorded 2.2 h ingest, and retrieval came out at hit@10 0.994,
+      // so nothing was measured early. Fixed because the next run may not be so
+      // lucky.
+      const depth = stats.queue_pending ?? 0;
       const orphans = stats.chunks_without_embedding ?? 0;
       const extractions = stats.extractions_pending ?? 0;
+      // Per-process on ARICORD, and the bench pod runs ARICORD_WORKERS=16, so
+      // /stats answers from whichever worker took the connection and this can read
+      // 0 while fifteen others are still extracting. `orphans` is the real guard:
+      // extraction writes memory chunks, which then need embeddings, so a worker
+      // still going shows up there. Worth knowing that this particular counter is
+      // one worker's view rather than the system's.
+      const failures = stats.extraction_failures ?? 0;
+      if (failures > 0) {
+        logger.warn(
+          `ARICORD reported ${failures} failed extraction batches — those documents are ` +
+            `indexed without their memories. The corpus is incomplete; treat the run as such.`,
+        );
+      }
       if (depth === 0 && orphans === 0 && extractions === 0) {
         drainedOnce = true;
         onProgress?.({
