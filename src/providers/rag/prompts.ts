@@ -81,6 +81,7 @@ Answer:
 }
 
 export const RAG_PROMPTS: ProviderPrompts = {
+  formatContext: buildRAGContext,
   answerPrompt: buildRAGAnswerPrompt,
 }
 

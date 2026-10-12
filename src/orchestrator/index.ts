@@ -29,6 +29,7 @@ export interface OrchestratorOptions {
   force?: boolean
   questionIds?: string[]
   phases?: ("ingest" | "indexing" | "search" | "answer" | "evaluate" | "report")[]
+  providerConfig?: Record<string, unknown>
 }
 
 function selectQuestionsBySampling(
@@ -131,7 +132,13 @@ export class Orchestrator {
         benchmarkName,
         judgeModel,
         answeringModel,
-        { limit, sampling, concurrency, status: "initializing" }
+        {
+          limit,
+          sampling,
+          concurrency,
+          status: "initializing",
+          providerConfig: options.providerConfig,
+        }
       )
       logger.info("Created checkpoint (initializing)")
     }
@@ -237,7 +244,8 @@ export class Orchestrator {
         : allQuestions
 
       for (const q of questionsToInit) {
-        const containerTag = `${q.questionId}-${checkpoint.dataSourceRunId}`
+        const containerKey = benchmark.getContainerKey?.(q.questionId) ?? q.questionId
+        const containerTag = `${containerKey}-${checkpoint.dataSourceRunId}`
         this.checkpointManager.initQuestion(checkpoint, q.questionId, containerTag, {
           question: q.question,
           groundTruth: q.groundTruth,
@@ -250,7 +258,10 @@ export class Orchestrator {
     }
 
     const provider = createProvider(providerName)
-    await provider.initialize(getProviderConfig(providerName))
+    if (checkpoint.providerConfig) {
+      logger.info(`Provider config: ${JSON.stringify(checkpoint.providerConfig)}`)
+    }
+    await provider.initialize({ ...getProviderConfig(providerName), ...checkpoint.providerConfig })
 
     if (phases.includes("ingest")) {
       await runIngestPhase(

@@ -112,7 +112,15 @@ export interface BenchmarkResult {
     totalQuestions: number
     correctCount: number
     accuracy: number
+    /** Score without the benchmark's excluded types, comparable to published numbers */
+    headline?: {
+      excludedTypes: string[]
+      totalQuestions: number
+      correctCount: number
+      accuracy: number
+    }
   }
+  providerConfig?: Record<string, unknown>
   latency: {
     ingest: LatencyStats
     indexing: LatencyStats

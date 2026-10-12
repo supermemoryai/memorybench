@@ -8,6 +8,8 @@ export type JudgePromptFunction = (
 export interface ProviderPrompts {
   answerPrompt?: string | ((question: string, context: unknown[], questionDate?: string) => string)
   judgePrompt?: JudgePromptFunction
+  /** Renders search results as text for benchmarks that supply their own answer prompt */
+  formatContext?: (context: unknown[]) => string
 }
 
 export function buildContextString(context: unknown[]): string {

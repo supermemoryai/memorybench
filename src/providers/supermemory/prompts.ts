@@ -155,8 +155,60 @@ Answer:
 [Your final answer here]`
 }
 
+interface V5Related {
+  memory?: string
+}
+
+interface V5Result {
+  memory?: string
+  chunk?: string
+  metadata?: {
+    sessionDate?: string
+    date?: string
+    temporalContext?: { documentDate?: string; eventDate?: string | string[] }
+    [key: string]: unknown
+  }
+  included?: { related?: { parents?: V5Related[]; children?: V5Related[]; siblings?: V5Related[] } }
+}
+
+function formatIsoDate(value: unknown): string | undefined {
+  if (typeof value !== "string" || Number.isNaN(Date.parse(value))) return undefined
+  const d = new Date(value)
+  const month = d.toLocaleString("en-US", { month: "long", timeZone: "UTC" })
+  return `${d.getUTCDate()} ${month} ${d.getUTCFullYear()}`
+}
+
+/** v5 search results as text, in the API's rank order: dated memories, and source excerpts where they rank */
+export function formatSupermemoryContext(context: unknown[]): string {
+  const lines: string[] = []
+  for (const r of context as V5Result[]) {
+    const md = r.metadata || {}
+    // Prefer our sessionDate; temporalContext.documentDate can be the upload day
+    const when = md.sessionDate || formatIsoDate(md.date) || md.temporalContext?.documentDate
+    const events = md.temporalContext?.eventDate
+    const eventStr = events ? ` (event date: ${[events].flat().join(", ")})` : ""
+    if (r.memory) {
+      const related = r.included?.related
+      const extra = [
+        ...(related?.parents || []),
+        ...(related?.children || []),
+        ...(related?.siblings || []),
+      ]
+        .map((m) => m.memory)
+        .filter(Boolean)
+        .map((m) => `\n  related: ${m}`)
+        .join("")
+      lines.push(`${when ? `${when}: ` : ""}${r.memory}${eventStr}${extra}`)
+    } else if (r.chunk) {
+      lines.push(`\n[Excerpt from the session of ${when || "unknown date"}]\n${r.chunk}\n`)
+    }
+  }
+  return lines.join("\n").trim() || "No memories found."
+}
+
 export const SUPERMEMORY_PROMPTS: ProviderPrompts = {
   answerPrompt: buildSupermemoryAnswerPrompt,
+  formatContext: formatSupermemoryContext,
 }
 
 export default SUPERMEMORY_PROMPTS

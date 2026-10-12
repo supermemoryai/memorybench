@@ -9,6 +9,7 @@ import type {
 } from "../../types/unified"
 import type { LoCoMoItem, LoCoMoMessage } from "./types"
 import { logger } from "../../utils/logger"
+import { buildLoCoMoAnswerPrompt, buildLoCoMoJudgePrompt } from "./prompts"
 
 const DEFAULT_DATA_PATH = "./data/benchmarks/locomo/locomo10.json"
 const GITHUB_DATASET_URL =
@@ -46,36 +47,45 @@ function parseLocomoDate(dateStr: string): { iso: string; formatted: string } | 
   }
 }
 
+// Category ids as defined by the LoCoMo dataset (snap-research/locomo).
 export const LOCOMO_QUESTION_TYPES: QuestionTypeRegistry = {
-  "single-hop": { id: "single-hop", alias: "single", description: "Single-hop fact recall" },
   "multi-hop": {
     id: "multi-hop",
     alias: "multi",
-    description: "Multi-hop reasoning across sessions",
+    description: "Multi-hop: answer spread across sessions",
   },
   temporal: { id: "temporal", alias: "temporal", description: "Temporal reasoning" },
-  "world-knowledge": {
-    id: "world-knowledge",
-    alias: "world",
-    description: "Commonsense/world knowledge",
+  "open-domain": {
+    id: "open-domain",
+    alias: "open",
+    description: "Open-domain: needs commonsense/world knowledge",
   },
+  "single-hop": { id: "single-hop", alias: "single", description: "Single-hop fact recall" },
   adversarial: {
     id: "adversarial",
     alias: "adversarial",
-    description: "Adversarial (unanswerable)",
+    description: "Adversarial: premise is false, answer is not in the conversation",
   },
 }
 
 const CATEGORY_TO_TYPE: Record<number, string> = {
-  1: "single-hop",
-  2: "multi-hop",
-  3: "temporal",
-  4: "world-knowledge",
+  1: "multi-hop",
+  2: "temporal",
+  3: "open-domain",
+  4: "single-hop",
   5: "adversarial",
 }
 
+/** Ground truth for adversarial questions, as LoCoMo's own evaluation scores them */
+export const LOCOMO_ADVERSARIAL_ANSWER = "Not mentioned in the conversation"
+
 export class LoCoMoBenchmark implements Benchmark {
   name = "locomo"
+  // Published LoCoMo results (Mem0, Zep and others) score categories 1-4 only
+  headlineExcludedTypes = ["adversarial"]
+  searchLimit = 30
+  buildAnswerPrompt = buildLoCoMoAnswerPrompt
+  buildJudgePrompt = buildLoCoMoJudgePrompt
   private data: LoCoMoItem[] = []
   private questions: UnifiedQuestion[] = []
   private sessionsMap: Map<string, UnifiedSession[]> = new Map()
@@ -126,15 +136,18 @@ export class LoCoMoBenchmark implements Benchmark {
           throw new Error(`Unknown LoCoMo category: ${qa.category} for question ${questionId}`)
         }
 
+        const isAdversarial = qa.category === 5
         this.questions.push({
           questionId,
           question: qa.question,
           questionType,
-          groundTruth: String(qa.answer),
+          groundTruth: isAdversarial ? LOCOMO_ADVERSARIAL_ANSWER : String(qa.answer),
           haystackSessionIds: sessionIds,
           metadata: {
             sampleId: item.sample_id,
+            category: qa.category,
             evidence: qa.evidence,
+            ...(isAdversarial ? { adversarialAnswer: qa.adversarial_answer } : {}),
           },
         })
 
@@ -161,7 +174,7 @@ export class LoCoMoBenchmark implements Benchmark {
 
       const unifiedMessages: UnifiedMessage[] = messages.map((m) => ({
         role: m.speaker === speakerA ? ("user" as const) : ("assistant" as const),
-        content: m.text,
+        content: m.blip_caption ? `${m.text} [shared a photo: ${m.blip_caption}]` : m.text,
         speaker: m.speaker,
       }))
 
@@ -203,6 +216,11 @@ export class LoCoMoBenchmark implements Benchmark {
 
   getHaystackSessions(questionId: string): UnifiedSession[] {
     return this.sessionsMap.get(questionId) || []
+  }
+
+  /** All questions about one conversation share its haystack, so ingest it once per conversation */
+  getContainerKey(questionId: string): string {
+    return questionId.slice(0, questionId.lastIndexOf("-q"))
   }
 
   getGroundTruth(questionId: string): string {

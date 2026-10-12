@@ -105,19 +105,43 @@ export async function runIndexingPhase(
     return
   }
 
+  // One indexing wait per shared container; the rest of its questions copy the result.
+  const groups = new Map<string, QuestionCheckpoint[]>()
+  for (const q of toIndex) groups.set(q.containerTag, [...(groups.get(q.containerTag) || []), q])
+  const copyIndexing = (from: QuestionCheckpoint, to: QuestionCheckpoint[]) => {
+    for (const q of to) {
+      if (q.questionId !== from.questionId)
+        checkpointManager.updatePhase(checkpoint, q.questionId, "indexing", {
+          ...from.phases.indexing,
+        })
+    }
+  }
+  const leads: QuestionCheckpoint[] = []
+  for (const [tag, members] of groups) {
+    const done = allQuestions.find(
+      (q) => q.containerTag === tag && q.phases.indexing.status === "completed"
+    )
+    if (done) copyIndexing(done, members)
+    else leads.push(members[0])
+  }
+  if (leads.length === 0) {
+    logger.info("All pending questions reuse already-indexed containers")
+    return
+  }
+
   const concurrency = resolveConcurrency("indexing", checkpoint.concurrency, provider.concurrency)
 
-  const tracker = new IndexingProgressTracker(toIndex)
+  const tracker = new IndexingProgressTracker(leads)
   const totalEpisodes = tracker.getTotalEpisodes()
 
   logger.info(
-    `Awaiting indexing for ${toIndex.length} questions, ${totalEpisodes} episodes (concurrency: ${concurrency})...`
+    `Awaiting indexing for ${leads.length} containers (${toIndex.length} questions), ${totalEpisodes} episodes (concurrency: ${concurrency})...`
   )
 
   tracker.display()
 
   await ConcurrentExecutor.execute(
-    toIndex,
+    leads,
     concurrency,
     checkpoint.runId,
     "indexing",
@@ -134,6 +158,10 @@ export async function runIndexingPhase(
           durationMs: 0,
         })
         tracker.markQuestionDone(question.questionId)
+        copyIndexing(
+          checkpoint.questions[question.questionId],
+          groups.get(question.containerTag) || []
+        )
         return { questionId: question.questionId, durationMs: 0 }
       }
 
@@ -171,6 +199,10 @@ export async function runIndexingPhase(
           completedAt: new Date().toISOString(),
           durationMs,
         })
+        copyIndexing(
+          checkpoint.questions[question.questionId],
+          groups.get(question.containerTag) || []
+        )
 
         return { questionId: question.questionId, durationMs }
       } catch (e) {

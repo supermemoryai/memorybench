@@ -5,6 +5,17 @@ interface Mem0Memory {
   metadata?: Record<string, unknown>
 }
 
+/** Mem0's own harness renders each memory as "<timestamp>: <memory>" */
+export function formatMem0Context(context: unknown[]): string {
+  return context
+    .map((r) => {
+      const mem = r as Mem0Memory
+      const ts = mem.metadata?.timestamp || mem.metadata?.date
+      return `${ts ? `${ts}: ` : ""}${mem.memory || JSON.stringify(r)}`
+    })
+    .join("\n")
+}
+
 export function buildMem0AnswerPrompt(question: string, context: unknown[]): string {
   const memoriesStr = context
     .map((r, i) => {
@@ -49,6 +60,7 @@ Answer concisely and directly.`
  */
 export const MEM0_PROMPTS: ProviderPrompts = {
   answerPrompt: buildMem0AnswerPrompt,
+  formatContext: formatMem0Context,
 }
 
 export default MEM0_PROMPTS

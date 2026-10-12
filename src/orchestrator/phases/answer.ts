@@ -4,6 +4,7 @@ import { createAnthropic } from "@ai-sdk/anthropic"
 import { createGoogleGenerativeAI } from "@ai-sdk/google"
 import { generateText } from "ai"
 import type { Benchmark } from "../../types/benchmark"
+import type { UnifiedQuestion } from "../../types/unified"
 import type { RunCheckpoint } from "../../types/checkpoint"
 import type { Provider } from "../../types/provider"
 import { CheckpointManager } from "../checkpoint"
@@ -50,8 +51,17 @@ function buildAnswerPrompt(
   question: string,
   context: unknown[],
   questionDate?: string,
-  provider?: Provider
+  provider?: Provider,
+  benchmark?: Benchmark,
+  unifiedQuestion?: UnifiedQuestion
 ): string {
+  if (benchmark?.buildAnswerPrompt && unifiedQuestion) {
+    const contextStr = provider?.prompts?.formatContext
+      ? provider.prompts.formatContext(context)
+      : buildContextString(context)
+    return benchmark.buildAnswerPrompt(unifiedQuestion, contextStr)
+  }
+
   if (provider?.prompts?.answerPrompt) {
     const customPrompt = provider.prompts.answerPrompt
     if (typeof customPrompt === "function") {
@@ -119,8 +129,22 @@ export async function runAnswerPhase(
         const context: unknown[] = searchData.results || []
         const questionDate = checkpoint.questions[question.questionId]?.questionDate
 
-        const basePrompt = buildAnswerPrompt(question.question, [], questionDate, provider)
-        const prompt = buildAnswerPrompt(question.question, context, questionDate, provider)
+        const basePrompt = buildAnswerPrompt(
+          question.question,
+          [],
+          questionDate,
+          provider,
+          benchmark,
+          question
+        )
+        const prompt = buildAnswerPrompt(
+          question.question,
+          context,
+          questionDate,
+          provider,
+          benchmark,
+          question
+        )
 
         const basePromptTokens = countTokens(basePrompt, modelConfig)
         const promptTokens = countTokens(prompt, modelConfig)

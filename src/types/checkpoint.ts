@@ -125,5 +125,7 @@ export interface RunCheckpoint {
   sampling?: SamplingConfig
   targetQuestionIds?: string[]
   concurrency?: ConcurrencyConfig
+  /** Provider settings for this run (e.g. search limit, threshold), applied on every resume */
+  providerConfig?: Record<string, unknown>
   questions: Record<string, QuestionCheckpoint>
 }

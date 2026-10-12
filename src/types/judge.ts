@@ -14,6 +14,8 @@ export interface JudgeInput {
   context?: string
   /** Optional provider-specific judge prompts */
   providerPrompts?: ProviderPrompts
+  /** Complete judge prompt supplied by the benchmark; used as-is when present */
+  promptOverride?: string
 }
 
 export interface JudgeResult {

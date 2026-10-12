@@ -62,6 +62,7 @@ Answer:
 }
 
 export const FILESYSTEM_PROMPTS: ProviderPrompts = {
+  formatContext: buildFilesystemContext,
   answerPrompt: buildFilesystemAnswerPrompt,
 }
 

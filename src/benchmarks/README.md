@@ -12,6 +12,12 @@ interface Benchmark {
     getHaystackSessions(questionId: string): UnifiedSession[]
     getGroundTruth(questionId: string): string
     getQuestionTypes(): QuestionTypeRegistry
+    // Optional
+    getContainerKey?(questionId: string): string   // questions sharing a haystack share a container
+    headlineExcludedTypes?: string[]                 // left out of the comparable headline score
+    searchLimit?: number                             // results per search (default 10)
+    buildAnswerPrompt?(question, context): string    // standard answer prompt, overrides provider prompts
+    buildJudgePrompt?({ question, hypothesis }): string
 }
 ```
 
@@ -40,13 +46,22 @@ interface Benchmark {
 ## Question Types
 
 ### LoCoMo
+Category ids follow the dataset (snap-research/locomo): 1 multi-hop, 2 temporal, 3 open-domain, 4 single-hop, 5 adversarial.
+
 | Type | Alias | Description |
 |------|-------|-------------|
-| `single-hop` | single | Single-hop fact recall |
-| `multi-hop` | multi | Multi-hop reasoning |
-| `temporal` | temporal | Temporal reasoning |
-| `world-knowledge` | world | Commonsense knowledge |
-| `adversarial` | adversarial | Unanswerable questions |
+| `multi-hop` | multi | Answer spread across sessions (cat 1, 282 questions) |
+| `temporal` | temporal | Temporal reasoning (cat 2, 321) |
+| `open-domain` | open | Needs commonsense/world knowledge (cat 3, 96) |
+| `single-hop` | single | Single-hop fact recall (cat 4, 841) |
+| `adversarial` | adversarial | False premise; gold is "Not mentioned in the conversation" (cat 5, 446) |
+
+Comparable protocol (Mem0 paper harness, reused by Zep, Memobase, MemOS, LangMem):
+- Answer and judge prompts are Mem0's, verbatim (`locomo/prompts.ts`), for every provider; providers only format their search results.
+- Run with `-m gpt-5 -j gpt-5` (answering and judging).
+- 30 results per search for every provider.
+- The headline score leaves out adversarial (1,540 questions); adversarial is still scored and reported per type.
+- Each conversation is ingested once into one container shared by its questions. Photo captions are part of the message text, as in LoCoMo's own evaluation.
 
 ### LongMemEval
 | Type | Alias | Description |

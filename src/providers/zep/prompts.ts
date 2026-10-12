@@ -126,6 +126,7 @@ Do NOT include both labels in your response.`
 }
 
 export const ZEP_PROMPTS: ProviderPrompts = {
+  formatContext: buildZepContext,
   answerPrompt: buildZepAnswerPrompt,
   judgePrompt: buildZepJudgePrompt,
 }

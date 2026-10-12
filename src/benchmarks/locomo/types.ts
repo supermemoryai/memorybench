@@ -2,11 +2,17 @@ export interface LoCoMoMessage {
   speaker: string
   dia_id: string
   text: string
+  /** Caption of a photo shared in this turn (part of the dataset's conversation text) */
+  blip_caption?: string
+  img_url?: string[]
 }
 
 export interface LoCoMoQA {
   question: string
-  answer: string | number
+  /** Missing for category 5 (adversarial) questions */
+  answer?: string | number
+  /** Category 5 only: the other speaker's fact the question baits */
+  adversarial_answer?: string
   evidence: string[]
   category: number
 }

@@ -63,6 +63,7 @@ export async function runEvaluatePhase(
             groundTruth: question.groundTruth,
             hypothesis,
             providerPrompts: provider?.prompts,
+            promptOverride: benchmark.buildJudgePrompt?.({ question, hypothesis }),
           }),
           calculateRetrievalMetrics(
             judge.getModel(),

@@ -229,6 +229,21 @@ export function generateReport(benchmark: Benchmark, checkpoint: RunCheckpoint):
   const correctCount = evaluations.filter((e) => e.score === 1).length
   const accuracy = totalQuestions > 0 ? correctCount / totalQuestions : 0
 
+  const excludedTypes = benchmark.headlineExcludedTypes || []
+  const headlineEvals = evaluations.filter((e) => !excludedTypes.includes(e.questionType))
+  const headline =
+    excludedTypes.length > 0
+      ? {
+          excludedTypes,
+          totalQuestions: headlineEvals.length,
+          correctCount: headlineEvals.filter((e) => e.score === 1).length,
+          accuracy:
+            headlineEvals.length > 0
+              ? headlineEvals.filter((e) => e.score === 1).length / headlineEvals.length
+              : 0,
+        }
+      : undefined
+
   const searchLatencyStats = calculateLatencyStats(searchDurations)
   const qualityPct = Math.round(accuracy * 100)
   const avgLatency = searchLatencyStats.mean
@@ -258,7 +273,9 @@ export function generateReport(benchmark: Benchmark, checkpoint: RunCheckpoint):
       totalQuestions,
       correctCount,
       accuracy,
+      headline,
     },
+    providerConfig: checkpoint.providerConfig,
     latency: {
       ingest: calculateLatencyStats(ingestDurations),
       indexing: calculateLatencyStats(indexingDurations),
@@ -312,6 +329,12 @@ export function printReport(result: BenchmarkResult): void {
   console.log(`  Total Questions: ${result.summary.totalQuestions}`)
   console.log(`  Correct: ${result.summary.correctCount}`)
   console.log(`  Accuracy: ${(result.summary.accuracy * 100).toFixed(2)}%`)
+  const headline = result.summary.headline
+  if (headline) {
+    console.log(
+      `  Accuracy without ${headline.excludedTypes.join(", ")}: ${(headline.accuracy * 100).toFixed(2)}% (${headline.correctCount}/${headline.totalQuestions}, comparable to published numbers)`
+    )
+  }
 
   if (result.memscore && result.tokens) {
     const qualityPct = Math.round(result.summary.accuracy * 100)

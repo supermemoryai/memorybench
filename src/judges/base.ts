@@ -7,6 +7,8 @@ export function getJudgePrompt(questionType: string, providerPrompts?: ProviderP
 }
 
 export function buildJudgePrompt(input: JudgeInput): string {
+  if (input.promptOverride) return input.promptOverride
+
   if (input.providerPrompts?.judgePrompt) {
     const prompts = input.providerPrompts.judgePrompt(
       input.question,
@@ -34,10 +36,15 @@ export function parseJudgeResponse(response: string): JudgeResult {
       throw new Error("No JSON found in response")
     }
     const parsed = JSON.parse(jsonMatch[0])
+    // Correct if score is 1 or the label is "correct" in any case
+    const label = String(parsed.label ?? "").toLowerCase()
+    const correct = parsed.score === 1 || label === "correct"
+    const explanation =
+      parsed.explanation || response.slice(0, response.indexOf(jsonMatch[0])).trim() || ""
     return {
-      score: parsed.score === 1 ? 1 : 0,
-      label: parsed.label === "correct" ? "correct" : "incorrect",
-      explanation: parsed.explanation || "",
+      score: correct ? 1 : 0,
+      label: correct ? "correct" : "incorrect",
+      explanation,
     }
   } catch {
     const isCorrect =

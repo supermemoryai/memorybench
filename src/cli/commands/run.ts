@@ -8,6 +8,7 @@ import { getAvailableProviders } from "../../providers"
 import { getAvailableBenchmarks } from "../../benchmarks"
 import { listAvailableModels, DEFAULT_ANSWERING_MODEL } from "../../utils/models"
 import { logger } from "../../utils/logger"
+import { existsSync, readFileSync } from "fs"
 
 const DEFAULT_JUDGE_MODEL = "gpt-4o"
 
@@ -23,6 +24,22 @@ interface RunArgs {
   force?: boolean
   fromPhase?: PhaseId
   concurrency?: ConcurrencyConfig
+  providerConfig?: Record<string, unknown>
+}
+
+/** Accepts inline JSON or a path to a JSON file */
+function parseProviderConfig(value: string): Record<string, unknown> | null {
+  try {
+    const raw = value.trim().startsWith("{")
+      ? value
+      : existsSync(value)
+        ? readFileSync(value, "utf8")
+        : ""
+    const parsed = JSON.parse(raw)
+    return typeof parsed === "object" && parsed !== null ? parsed : null
+  } catch {
+    return null
+  }
 }
 
 function generateRunId(): string {
@@ -82,6 +99,13 @@ export function parseRunArgs(args: string[]): RunArgs | null {
       concurrency.evaluate = parseInt(args[++i], 10)
     } else if (arg === "--force") {
       parsed.force = true
+    } else if (arg === "--provider-config") {
+      const providerConfig = parseProviderConfig(args[++i])
+      if (!providerConfig) {
+        logger.error("--provider-config must be a JSON object or a path to a JSON file")
+        return null
+      }
+      parsed.providerConfig = providerConfig
     }
   }
 
@@ -130,6 +154,9 @@ export async function runCommand(args: string[]): Promise<void> {
     console.log("  --concurrency-answer N    Concurrency for answer phase")
     console.log("  --concurrency-evaluate N  Concurrency for evaluate phase")
     console.log("  --force                Clear existing checkpoint and start fresh")
+    console.log(
+      "  --provider-config X    Provider settings as JSON or a JSON file path (stored with the run)"
+    )
     console.log("")
     console.log(`Available models: ${listAvailableModels().join(", ")}`)
     return
@@ -160,6 +187,9 @@ export async function runCommand(args: string[]): Promise<void> {
     parsed.benchmark = checkpoint.benchmark
     parsed.judgeModel = parsed.judgeModel || checkpoint.judge
     parsed.answeringModel = parsed.answeringModel || checkpoint.answeringModel
+    if (parsed.providerConfig) {
+      logger.warn("Ignoring --provider-config: a continued run keeps the settings it started with")
+    }
 
     logger.info(`Continuing run ${parsed.runId} (${checkpoint.provider}/${checkpoint.benchmark})`)
   } else {
@@ -209,5 +239,6 @@ export async function runCommand(args: string[]): Promise<void> {
     concurrency: parsed.concurrency,
     force: parsed.force,
     phases,
+    providerConfig: parsed.providerConfig,
   })
 }

@@ -130,6 +130,7 @@ export class CheckpointManager {
       dataSourceRunId?: string
       status?: RunStatus
       concurrency?: ConcurrencyConfig
+      providerConfig?: Record<string, unknown>
     }
   ): RunCheckpoint {
     const checkpoint: RunCheckpoint = {
@@ -146,6 +147,7 @@ export class CheckpointManager {
       sampling: options?.sampling,
       targetQuestionIds: options?.targetQuestionIds,
       concurrency: options?.concurrency,
+      providerConfig: options?.providerConfig,
       questions: {},
     }
 
