@@ -83,6 +83,8 @@ export interface QuestionTypeStats {
   total: number
   correct: number
   accuracy: number
+  /** Mean of the question scores, for benchmarks that score between 0 and 1 */
+  meanScore?: number
   latency: {
     search: LatencyStats
     answer: LatencyStats
@@ -112,6 +114,9 @@ export interface BenchmarkResult {
     totalQuestions: number
     correctCount: number
     accuracy: number
+    meanScore?: number
+    /** Mean of the per-type mean scores, each type weighted equally */
+    macroMeanScore?: number
     /** Score without the benchmark's excluded types, comparable to published numbers */
     headline?: {
       excludedTypes: string[]

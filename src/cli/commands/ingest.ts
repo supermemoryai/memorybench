@@ -4,12 +4,15 @@ import { orchestrator, CheckpointManager } from "../../orchestrator"
 import { getAvailableProviders } from "../../providers"
 import { getAvailableBenchmarks } from "../../benchmarks"
 import { logger } from "../../utils/logger"
+import { parseProviderConfig } from "./run"
 
 interface IngestArgs {
   provider?: string
   benchmark?: string
   runId: string
   force?: boolean
+  questionIds?: string[]
+  providerConfig?: Record<string, unknown>
 }
 
 function generateRunId(): string {
@@ -32,6 +35,18 @@ export function parseIngestArgs(args: string[]): IngestArgs | null {
       parsed.runId = args[++i]
     } else if (arg === "--force") {
       parsed.force = true
+    } else if (arg === "-q" || arg === "--question-ids") {
+      parsed.questionIds = args[++i]
+        .split(",")
+        .map((id) => id.trim())
+        .filter(Boolean)
+    } else if (arg === "--provider-config") {
+      const providerConfig = parseProviderConfig(args[++i])
+      if (!providerConfig) {
+        logger.error("--provider-config must be a JSON object or a path to a JSON file")
+        return null
+      }
+      parsed.providerConfig = providerConfig
     }
   }
 
@@ -53,7 +68,7 @@ export async function ingestCommand(args: string[]): Promise<void> {
   if (!parsed) {
     console.log("Usage:")
     console.log(
-      "  New run:      bun run src/index.ts ingest -p <provider> -b <benchmark> [-r <runId>] [--force]"
+      "  New run:      bun run src/index.ts ingest -p <provider> -b <benchmark> [-r <runId>] [-q <ids>] [--provider-config <json>] [--force]"
     )
     console.log("  Continue run: bun run src/index.ts ingest -r <runId>")
     console.log("")
@@ -61,6 +76,10 @@ export async function ingestCommand(args: string[]): Promise<void> {
     console.log(`  -p, --provider   Provider: ${getAvailableProviders().join(", ")}`)
     console.log(`  -b, --benchmark  Benchmark: ${getAvailableBenchmarks().join(", ")}`)
     console.log("  -r, --run-id     Run identifier")
+    console.log("  -q, --question-ids  Comma-separated question ids to ingest (default: all)")
+    console.log(
+      "  --provider-config   Provider settings as JSON or a JSON file path (stored with the run)"
+    )
     console.log("  --force          Clear existing checkpoint and start fresh")
     return
   }
@@ -85,6 +104,9 @@ export async function ingestCommand(args: string[]): Promise<void> {
 
     parsed.provider = checkpoint.provider
     parsed.benchmark = checkpoint.benchmark
+    if (parsed.providerConfig) {
+      logger.warn("Ignoring --provider-config: a continued run keeps the settings it started with")
+    }
     logger.info(
       `Continuing ingest for ${parsed.runId} (${checkpoint.provider}/${checkpoint.benchmark})`
     )
@@ -110,5 +132,7 @@ export async function ingestCommand(args: string[]): Promise<void> {
     benchmark: parsed.benchmark as BenchmarkName,
     runId: parsed.runId,
     force: parsed.force,
+    questionIds: parsed.questionIds,
+    providerConfig: parsed.providerConfig,
   })
 }

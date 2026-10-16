@@ -86,6 +86,7 @@ export function generateReport(benchmark: Benchmark, checkpoint: RunCheckpoint):
     {
       total: number
       correct: number
+      scoreSum: number
       searchDurations: number[]
       answerDurations: number[]
       totalDurations: number[]
@@ -151,6 +152,7 @@ export function generateReport(benchmark: Benchmark, checkpoint: RunCheckpoint):
       byType[qType] = {
         total: 0,
         correct: 0,
+        scoreSum: 0,
         searchDurations: [],
         answerDurations: [],
         totalDurations: [],
@@ -159,7 +161,8 @@ export function generateReport(benchmark: Benchmark, checkpoint: RunCheckpoint):
     }
     const typeStats = byType[qType]!
     typeStats.total++
-    if (evalPhase.score === 1) {
+    typeStats.scoreSum += evalPhase.score || 0
+    if (evalPhase.label === "correct") {
       typeStats.correct++
     }
     if (searchDurationMs) typeStats.searchDurations.push(searchDurationMs)
@@ -175,6 +178,7 @@ export function generateReport(benchmark: Benchmark, checkpoint: RunCheckpoint):
       total: raw.total,
       correct: raw.correct,
       accuracy: raw.total > 0 ? raw.correct / raw.total : 0,
+      meanScore: raw.total > 0 ? raw.scoreSum / raw.total : 0,
       latency: {
         search: calculateLatencyStats(raw.searchDurations),
         answer: calculateLatencyStats(raw.answerDurations),
@@ -199,8 +203,7 @@ export function generateReport(benchmark: Benchmark, checkpoint: RunCheckpoint):
     if (qCheckpoint.phases.evaluate.status !== "completed") continue
     const answerPhase = qCheckpoint.phases.answer
     if (answerPhase.promptTokens != null) allPromptTokens.push(answerPhase.promptTokens)
-    if (answerPhase.basePromptTokens != null)
-      allBasePromptTokens.push(answerPhase.basePromptTokens)
+    if (answerPhase.basePromptTokens != null) allBasePromptTokens.push(answerPhase.basePromptTokens)
     if (answerPhase.contextTokens != null) allContextTokens.push(answerPhase.contextTokens)
   }
 
@@ -226,8 +229,16 @@ export function generateReport(benchmark: Benchmark, checkpoint: RunCheckpoint):
   }
 
   const totalQuestions = evaluations.length
-  const correctCount = evaluations.filter((e) => e.score === 1).length
+  const correctCount = evaluations.filter((e) => e.label === "correct").length
   const accuracy = totalQuestions > 0 ? correctCount / totalQuestions : 0
+  const meanScore =
+    totalQuestions > 0 ? evaluations.reduce((sum, e) => sum + e.score, 0) / totalQuestions : 0
+  // Every question type weighs the same, however many questions it has
+  const typeStats = Object.values(byQuestionType)
+  const macroMeanScore =
+    typeStats.length > 0
+      ? typeStats.reduce((sum, t) => sum + (t.meanScore ?? 0), 0) / typeStats.length
+      : 0
 
   const excludedTypes = benchmark.headlineExcludedTypes || []
   const headlineEvals = evaluations.filter((e) => !excludedTypes.includes(e.questionType))
@@ -236,10 +247,10 @@ export function generateReport(benchmark: Benchmark, checkpoint: RunCheckpoint):
       ? {
           excludedTypes,
           totalQuestions: headlineEvals.length,
-          correctCount: headlineEvals.filter((e) => e.score === 1).length,
+          correctCount: headlineEvals.filter((e) => e.label === "correct").length,
           accuracy:
             headlineEvals.length > 0
-              ? headlineEvals.filter((e) => e.score === 1).length / headlineEvals.length
+              ? headlineEvals.filter((e) => e.label === "correct").length / headlineEvals.length
               : 0,
         }
       : undefined
@@ -273,6 +284,8 @@ export function generateReport(benchmark: Benchmark, checkpoint: RunCheckpoint):
       totalQuestions,
       correctCount,
       accuracy,
+      meanScore,
+      macroMeanScore,
       headline,
     },
     providerConfig: checkpoint.providerConfig,
@@ -329,6 +342,11 @@ export function printReport(result: BenchmarkResult): void {
   console.log(`  Total Questions: ${result.summary.totalQuestions}`)
   console.log(`  Correct: ${result.summary.correctCount}`)
   console.log(`  Accuracy: ${(result.summary.accuracy * 100).toFixed(2)}%`)
+  if (result.summary.macroMeanScore !== undefined) {
+    console.log(
+      `  Mean score: ${(result.summary.meanScore! * 100).toFixed(2)}% (macro over types: ${(result.summary.macroMeanScore * 100).toFixed(2)}%)`
+    )
+  }
   const headline = result.summary.headline
   if (headline) {
     console.log(
@@ -377,7 +395,7 @@ export function printReport(result: BenchmarkResult): void {
     const description = typeInfo?.description ? ` (${typeInfo.description})` : ""
     console.log(`  ${type}${description}:`)
     console.log(
-      `    Total: ${stats.total}, Correct: ${stats.correct}, Accuracy: ${(stats.accuracy * 100).toFixed(2)}%`
+      `    Total: ${stats.total}, Correct: ${stats.correct}, Accuracy: ${(stats.accuracy * 100).toFixed(2)}%, Mean score: ${((stats.meanScore ?? 0) * 100).toFixed(2)}%`
     )
     console.log(
       `    Latency: search=${stats.latency.search.median}ms, answer=${stats.latency.answer.median}ms, total=${stats.latency.total.median}ms (median)`

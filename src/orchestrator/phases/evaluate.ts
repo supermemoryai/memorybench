@@ -57,14 +57,16 @@ export async function runEvaluatePhase(
         const searchResults = checkpoint.questions[question.questionId].phases.search.results || []
 
         const [result, retrievalMetrics] = await Promise.all([
-          judge.evaluate({
-            question: question.question,
-            questionType: question.questionType,
-            groundTruth: question.groundTruth,
-            hypothesis,
-            providerPrompts: provider?.prompts,
-            promptOverride: benchmark.buildJudgePrompt?.({ question, hypothesis }),
-          }),
+          benchmark.evaluateAnswer
+            ? benchmark.evaluateAnswer(question, hypothesis, judge.getModel())
+            : judge.evaluate({
+                question: question.question,
+                questionType: question.questionType,
+                groundTruth: question.groundTruth,
+                hypothesis,
+                providerPrompts: provider?.prompts,
+                promptOverride: benchmark.buildJudgePrompt?.({ question, hypothesis }),
+              }),
           calculateRetrievalMetrics(
             judge.getModel(),
             question.question,
