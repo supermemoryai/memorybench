@@ -64,7 +64,17 @@ export const MODEL_CONFIGS: Record<string, ModelConfig> = {
     supportsTemperature: false,
     defaultTemperature: 1,
     maxTokensParam: "max_completion_tokens",
-    defaultMaxTokens: 1000,
+    // Reasoning tokens count against this cap; 1000 can leave the answer empty
+    defaultMaxTokens: 16000,
+  },
+  "gpt-6-luna": {
+    id: "gpt-6-luna",
+    provider: "openai",
+    displayName: "GPT-6 Luna",
+    supportsTemperature: false,
+    defaultTemperature: 1,
+    maxTokensParam: "max_completion_tokens",
+    defaultMaxTokens: 16000,
   },
   "gpt-5-mini": {
     id: "gpt-5-mini",

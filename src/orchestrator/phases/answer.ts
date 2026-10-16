@@ -16,6 +16,7 @@ import { buildContextString } from "../../types/prompts"
 import { ConcurrentExecutor } from "../concurrent"
 import { resolveConcurrency } from "../../types/concurrency"
 import { countTokens } from "../../utils/tokens"
+import { answerWithAgent } from "./agent-answer"
 
 type LanguageModel =
   | ReturnType<typeof createOpenAI>
@@ -59,7 +60,7 @@ function buildAnswerPrompt(
     const contextStr = provider?.prompts?.formatContext
       ? provider.prompts.formatContext(context)
       : buildContextString(context)
-    return benchmark.buildAnswerPrompt(unifiedQuestion, contextStr)
+    return benchmark.buildAnswerPrompt(unifiedQuestion, contextStr, context)
   }
 
   if (provider?.prompts?.answerPrompt) {
@@ -125,6 +126,38 @@ export async function runAnswerPhase(
       })
 
       try {
+        if (checkpoint.answerMode && provider) {
+          const agent = await answerWithAgent({
+            model: client(modelConfig.id),
+            provider,
+            containerTag: checkpoint.questions[question.questionId].containerTag,
+            question,
+            rules: benchmark.agentRules?.(question) ?? "Be specific and direct.",
+            memoriesOnly: checkpoint.answerMode === "agentic-memories",
+            temperature: modelConfig.supportsTemperature
+              ? modelConfig.defaultTemperature
+              : undefined,
+            maxOutputTokens: modelConfig.defaultMaxTokens,
+          })
+          const durationMs = Date.now() - startTime
+          checkpointManager.updatePhase(checkpoint, question.questionId, "answer", {
+            status: "completed",
+            hypothesis: agent.text,
+            contextTokens: agent.contextTokensApprox,
+            promptTokens: agent.usage.inputTokens,
+            agentCalls: agent.calls,
+            agentRetrieved: agent.retrieved,
+            completedAt: new Date().toISOString(),
+            durationMs,
+          })
+          logger.progress(
+            index + 1,
+            total,
+            `Answered ${question.questionId} with ${agent.calls.length} tool calls (${durationMs}ms)`
+          )
+          return { questionId: question.questionId, durationMs }
+        }
+
         const searchData = JSON.parse(readFileSync(resultFile, "utf8"))
         const context: unknown[] = searchData.results || []
         const questionDate = checkpoint.questions[question.questionId]?.questionDate
