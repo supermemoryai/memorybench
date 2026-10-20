@@ -1,0 +1,36 @@
+{
+  "agent": {
+    "model": "gpt-5.6-luna",
+    "api": "responses",
+    "base_url": "https://api.openai.com/v1",
+    "api_key_env": "OPENAI_API_KEY",
+    "reasoning_effort": "high",
+    "max_turns": 60,
+    "prices_per_1m": {
+      "input": 0.2,
+      "cached_input": 0.02,
+      "output": 1.2
+    }
+  },
+  "memory": {
+    "provider": "supermemory",
+    "namespace_prefix": "dolphinbench-sm-dynamic",
+    "api_key_env": "SUPERMEMORY_API_KEY",
+    "base_url": "https://api.supermemory.ai",
+    "capture": "conversation",
+    "settings": {
+      "supportingContext": "Each document is one past conversation between {persona} and their personal AI assistant. The first line starts with the date and time {persona} sent the message, followed by {persona}'s own words; the assistant's reply comes after. {persona} relies on the assistant to run their work and personal life, so remember what an assistant needs later to act for them without asking: people (full names, roles, relationships, how to reach them), companies, vendors and services they use or prefer (specific shops, restaurants, airlines, tools), accounts and identifiers, addresses and places, schedules and recurring commitments, preferences, standing instructions (how they like things done, who to copy, which channel to use), plans, deadlines and decisions. Treat {persona}'s statements as the source of truth and the assistant's reply only as context. Resolve relative times (tomorrow, next Friday, last month) against the message date. When something changes (a new vendor, a moved meeting, a new role, a preference that flips), record the new state and what it replaced. Keep exact names, numbers, times, amounts and IDs.",
+      "dreaming": "dynamic",
+      "searchMode": "hybrid",
+      "limit": 10,
+      "threshold": 0.3
+    },
+    "recall": {
+      "enabled": true,
+      "profile": true,
+      "limit": 5,
+      "max_chars": 500,
+      "during_ingestion": true
+    }
+  }
+}

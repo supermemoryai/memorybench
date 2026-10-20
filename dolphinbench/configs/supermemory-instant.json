@@ -1,0 +1,47 @@
+{
+  "agent": {
+    "model": "gpt-5.6-luna",
+    "api": "responses",
+    "base_url": "https://api.openai.com/v1",
+    "api_key_env": "OPENAI_API_KEY",
+    "reasoning_effort": "high",
+    "max_turns": 60,
+    "prices_per_1m": {
+      "input": 0.2,
+      "cached_input": 0.02,
+      "output": 1.2
+    }
+  },
+  "memory": {
+    "provider": "supermemory",
+    "namespace_prefix": "dolphinbench-sm-instant",
+    "api_key_env": "SUPERMEMORY_API_KEY",
+    "base_url": "https://api.supermemory.ai",
+    "capture": "conversation",
+    "settings": {
+      "supportingContext": "Each document is one conversation between {persona} and their personal AI assistant: the date and time {persona} sent the message, {persona}'s own words, then the assistant's reply. {persona} relies on the assistant to act for them later (email, calendar, messaging, documents, orders and work tools), often with requests that leave out details they mentioned before. Extract what the assistant needs to act correctly without asking: who people are (full names, roles, relationships, how to reach them); which businesses, vendors, services and accounts {persona} uses for what; standing rules with their conditions and exceptions; stated preferences and defaults; and decisions, plans and project facts with their status (proposed, provisional, final, reversed), reasons, owners and figures. Keep exact names, numbers, amounts, IDs, dates and qualifiers such as 'for now', 'only' or 'except'. {persona}'s words are the source of truth; the assistant's reply is context and may be wrong. Resolve relative dates against the message date and keep the year. When something changes, record the new state and what it replaced. Skip small talk and passing moods.",
+      "dreaming": "instant",
+      "searchMode": "hybrid",
+      "limit": 10,
+      "threshold": 0.3,
+      "profileBuckets": {
+        "preferences": "Choices {persona} has said they prefer, want by default, or habitually use: specific shops, restaurants, brands, products, tools, formats, times and ways of doing things. Keep the condition a preference applies under (a time of day, an occasion, a kind of request) and the exact name of the place or product. Exclude one-off decisions, moods and other people's preferences.",
+        "people": "People {persona} deals with at work and in personal life: full name, role or title, team or company, relationship to {persona}, what they are responsible for, and how to reach them (email, handle, phone). Include changes such as a new role, a replacement or a handoff, with the date.",
+        "places_and_services": "Specific businesses, venues, vendors, services, apps, accounts and addresses {persona} uses, and what each one is used for, including account IDs, plans and contacts. Exclude generic mentions that don't name a specific place or service.",
+        "standing_instructions": "Rules {persona} has set for how things should be done from now on: always or never do something, scheduling constraints, approval thresholds, who to copy or notify, which channel or format to use, and how to handle certain requests. Keep the exact condition, any exceptions, and when the rule was set or changed."
+      }
+    },
+    "recall": {
+      "enabled": true,
+      "profile": true,
+      "profile_exclude": [
+        "Recent Memories"
+      ],
+      "profile_max_items": 25,
+      "profile_max_chars": 12000,
+      "limit": 5,
+      "max_chars": 500,
+      "during_ingestion": true
+    }
+  }
+}
