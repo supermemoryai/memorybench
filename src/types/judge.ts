@@ -11,6 +11,11 @@ export interface JudgeInput {
   questionType: string
   groundTruth: string
   hypothesis: string
+  /**
+   * True when the question is unanswerable and the system is expected to abstain.
+   * Set by the benchmark, since not every benchmark encodes abstention in `questionType`.
+   */
+  isAbstention?: boolean
   context?: string
   /** Optional provider-specific judge prompts */
   providerPrompts?: ProviderPrompts

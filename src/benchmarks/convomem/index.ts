@@ -167,6 +167,7 @@ export class ConvoMemBenchmark implements Benchmark {
       questionType: category,
       groundTruth: item.answer,
       haystackSessionIds: sessionIds,
+      isAbstention: category === "abstention_evidence",
       metadata: {
         evidences: item.message_evidences,
       },

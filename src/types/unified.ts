@@ -25,6 +25,13 @@ export interface UnifiedQuestion {
   questionType: string
   groundTruth: string
   haystackSessionIds: string[]
+  /**
+   * True when the question is unanswerable from the conversation and the system is
+   * expected to abstain. Benchmarks that encode abstention outside of `questionType`
+   * (LongMemEval marks it with an `_abs` question id suffix) must set this so the
+   * judge uses the abstention rubric instead of exact-answer matching.
+   */
+  isAbstention?: boolean
   metadata?: Record<string, unknown>
 }
 

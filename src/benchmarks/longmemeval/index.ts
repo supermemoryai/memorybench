@@ -48,6 +48,17 @@ function parseLongMemEvalDate(dateStr: string): { iso: string; formatted: string
 }
 
 /**
+ * LongMemEval marks abstention questions with an `_abs` suffix on the question id and
+ * keeps the original `question_type` (e.g. `single-session-user`). For these entries the
+ * `answer` field is an explanation of why the question is unanswerable, not an answer to
+ * match against. The official evaluator switches rubric on the same signal, see
+ * `get_anscheck_prompt(..., abstention=...)` in LongMemEval's `src/evaluation/evaluate_qa.py`.
+ */
+export function isAbstentionQuestionId(questionId: string): boolean {
+  return questionId.endsWith("_abs")
+}
+
+/**
  * LongMemEval question types - native string types from the dataset.
  */
 export const LONGMEMEVAL_QUESTION_TYPES: QuestionTypeRegistry = {
@@ -199,6 +210,7 @@ export class LongMemEvalBenchmark implements Benchmark {
         questionType: item.question_type,
         groundTruth: item.answer,
         haystackSessionIds: sessionIds,
+        isAbstention: isAbstentionQuestionId(item.question_id),
         metadata: {
           questionDate: item.question_date,
         },

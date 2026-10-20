@@ -143,6 +143,7 @@ export class LoCoMoBenchmark implements Benchmark {
           questionType,
           groundTruth: isAdversarial ? LOCOMO_ADVERSARIAL_ANSWER : String(qa.answer),
           haystackSessionIds: sessionIds,
+          isAbstention: questionType === "adversarial",
           metadata: {
             sampleId: item.sample_id,
             category: qa.category,
