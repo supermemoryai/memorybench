@@ -30,7 +30,11 @@ const EMBEDDING_MODEL = "text-embedding-3-small"
  * Split text into overlapping chunks, attempting to break on sentence boundaries.
  * Follows the chunking approach from OpenClaw/QMD: ~400 tokens with overlap.
  */
-function chunkText(text: string, chunkSize: number = CHUNK_SIZE, overlap: number = CHUNK_OVERLAP): string[] {
+export function chunkText(
+  text: string,
+  chunkSize: number = CHUNK_SIZE,
+  overlap: number = CHUNK_OVERLAP
+): string[] {
   if (text.length <= chunkSize) {
     return [text.trim()]
   }
@@ -46,22 +50,29 @@ function chunkText(text: string, chunkSize: number = CHUNK_SIZE, overlap: number
       break
     }
 
-    // Try to break on sentence boundary
+    // Try to break on sentence boundary, then newline, then word. A candidate is
+    // only usable if it fills at least half the chunk — the word fallback in
+    // particular can land just past `start` on text with a long unbroken token
+    // (a URL, a base64 blob, minified JSON), and a sliver chunk there leaves the
+    // window unable to move forward by the overlap.
+    const minBreakPoint = start + chunkSize * 0.5
+
     let breakPoint = text.lastIndexOf(". ", end)
-    if (breakPoint <= start || breakPoint < start + chunkSize * 0.5) {
+    if (breakPoint < minBreakPoint) {
       breakPoint = text.lastIndexOf("\n", end)
     }
-    if (breakPoint <= start || breakPoint < start + chunkSize * 0.5) {
+    if (breakPoint < minBreakPoint) {
       breakPoint = text.lastIndexOf(" ", end)
     }
-    if (breakPoint <= start) {
+    if (breakPoint < minBreakPoint) {
       breakPoint = end
     }
 
     chunks.push(text.slice(start, breakPoint + 1).trim())
-    start = breakPoint + 1 - overlap
 
-    if (start < 0) start = 0
+    // Always advance. The half-chunk floor above keeps this positive for the
+    // default sizes, but a caller-supplied overlap can still exceed the step.
+    start = Math.max(breakPoint + 1 - overlap, start + 1)
   }
 
   return chunks.filter((c) => c.length > 0)
