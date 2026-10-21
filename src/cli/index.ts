@@ -150,11 +150,16 @@ Available benchmark datasets for evaluation:
   convomem       ConvoMem - Conversational memory benchmark
                  Tests: user facts, assistant facts, preferences, implicit connections
                  Source: HuggingFace Salesforce/ConvoMem (downloaded on first use)
+  
+  infinitebench  InfiniteBench - Ultra-long context understanding benchmark
+                 Tests: document QA, long-context retrieval, code understanding, multi-hop reasoning
+                 Source: GitHub OpenBMB/InfiniteBench (downloaded on first use)
 
 Usage:
   -b locomo        Run LoCoMo benchmark
   -b longmemeval   Run LongMemEval benchmark
   -b convomem      Run ConvoMem benchmark
+  -b infinitebench Run InfiniteBench benchmark
 `)
 }
 

@@ -35,4 +35,4 @@ export interface Benchmark {
   buildJudgePrompt?(input: BenchmarkJudgeInput): string
 }
 
-export type BenchmarkName = "locomo" | "longmemeval" | "convomem"
+export type BenchmarkName = "locomo" | "longmemeval" | "convomem" | "infinitebench"
