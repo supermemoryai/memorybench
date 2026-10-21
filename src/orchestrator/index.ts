@@ -7,6 +7,7 @@ import { createProvider } from "../providers"
 import { createBenchmark } from "../benchmarks"
 import { createJudge } from "../judges"
 import { CheckpointManager } from "./checkpoint"
+import { selectQuestionsBySampling } from "./sampling"
 import { getProviderConfig, getJudgeConfig } from "../utils/config"
 import { resolveModel } from "../utils/models"
 import { logger } from "../utils/logger"
@@ -30,40 +31,6 @@ export interface OrchestratorOptions {
   questionIds?: string[]
   phases?: ("ingest" | "indexing" | "search" | "answer" | "evaluate" | "report")[]
   providerConfig?: Record<string, unknown>
-}
-
-function selectQuestionsBySampling(
-  allQuestions: { questionId: string; questionType: string }[],
-  sampling: SamplingConfig
-): string[] {
-  if (sampling.mode === "full") {
-    return allQuestions.map((q) => q.questionId)
-  }
-
-  if (sampling.mode === "limit" && sampling.limit) {
-    return allQuestions.slice(0, sampling.limit).map((q) => q.questionId)
-  }
-
-  if (sampling.mode === "sample" && sampling.perCategory) {
-    const byType: Record<string, { questionId: string; questionType: string }[]> = {}
-    for (const q of allQuestions) {
-      if (!byType[q.questionType]) byType[q.questionType] = []
-      byType[q.questionType].push(q)
-    }
-
-    const selected: string[] = []
-    for (const questions of Object.values(byType)) {
-      if (sampling.sampleType === "random") {
-        const shuffled = [...questions].sort(() => Math.random() - 0.5)
-        selected.push(...shuffled.slice(0, sampling.perCategory).map((q) => q.questionId))
-      } else {
-        selected.push(...questions.slice(0, sampling.perCategory).map((q) => q.questionId))
-      }
-    }
-    return selected
-  }
-
-  return allQuestions.map((q) => q.questionId)
 }
 
 export class Orchestrator {
@@ -224,11 +191,20 @@ export class Orchestrator {
         targetQuestionIds = questionIds
       } else if (sampling) {
         logger.info(`Using sampling mode: ${sampling.mode}`)
-        targetQuestionIds = selectQuestionsBySampling(allQuestions, sampling)
-        checkpoint.sampling = sampling
+        const selection = selectQuestionsBySampling(allQuestions, sampling)
+        targetQuestionIds = selection.questionIds
+        // Record the resolved seed, not the requested config, so the checkpoint
+        // is enough to reproduce this exact subset.
+        checkpoint.sampling =
+          selection.seed === undefined ? sampling : { ...sampling, seed: selection.seed }
         logger.info(
           `Sampling selected ${targetQuestionIds.length} questions from ${allQuestions.length} total`
         )
+        if (selection.seed !== undefined) {
+          logger.info(
+            `Random sampling seed: ${selection.seed} (reuse with --seed ${selection.seed})`
+          )
+        }
       } else if (effectiveLimit) {
         logger.info(`Using limit: ${effectiveLimit}`)
         targetQuestionIds = allQuestions.slice(0, effectiveLimit).map((q) => q.questionId)

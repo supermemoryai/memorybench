@@ -21,6 +21,7 @@ interface RunArgs {
   limit?: number
   sample?: number
   sampleType?: SampleType
+  seed?: number
   force?: boolean
   fromPhase?: PhaseId
   concurrency?: ConcurrencyConfig
@@ -77,6 +78,13 @@ export function parseRunArgs(args: string[]): RunArgs | null {
         logger.error(`Invalid sample type: ${type}. Valid types: consecutive, random`)
         return null
       }
+    } else if (arg === "--seed") {
+      const seed = Number(args[++i])
+      if (!Number.isInteger(seed) || seed < 0) {
+        logger.error(`Invalid seed: ${seed}. Expected a non-negative integer.`)
+        return null
+      }
+      parsed.seed = seed
     } else if (arg === "-f" || arg === "--from-phase") {
       const phase = args[++i] as PhaseId
       if (PHASE_ORDER.includes(phase)) {
@@ -145,6 +153,9 @@ export async function runCommand(args: string[]): Promise<void> {
     console.log(`  -m, --answering-model  Answering model (default: ${DEFAULT_ANSWERING_MODEL})`)
     console.log("  -s, --sample           Sample N questions per category")
     console.log("  --sample-type          Sample type: consecutive (default), random")
+    console.log(
+      "  --seed N               Seed for --sample-type random (logged and stored when omitted)"
+    )
     console.log("  -l, --limit            Limit total number of questions to process")
     console.log(`  -f, --from-phase       Start from phase: ${PHASE_ORDER.join(", ")}`)
     console.log("  --concurrency N        Default concurrency for all phases")
@@ -221,6 +232,7 @@ export async function runCommand(args: string[]): Promise<void> {
       mode: "sample",
       sampleType: parsed.sampleType || "consecutive",
       perCategory: parsed.sample,
+      seed: parsed.seed,
     }
   } else if (parsed.limit) {
     sampling = {
