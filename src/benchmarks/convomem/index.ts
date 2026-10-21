@@ -144,6 +144,13 @@ export class ConvoMemBenchmark implements Benchmark {
       const content = readFileSync(dataFile, "utf8")
       const items: { category: string; item: ConvoMemEvidence }[] = JSON.parse(content)
 
+      // Reset once the new data has parsed, so `load()` is idempotent without a
+      // failed reload discarding what was already loaded. The server caches
+      // benchmark instances, and a second `load()` would otherwise append a
+      // duplicate copy of every question.
+      this.questions = []
+      this.sessionsMap.clear()
+
       for (let i = 0; i < items.length; i++) {
         const { category, item } = items[i]
         this.processItem(item, category, i)

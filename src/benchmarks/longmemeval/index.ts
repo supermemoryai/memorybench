@@ -184,7 +184,22 @@ export class LongMemEvalBenchmark implements Benchmark {
   }
 
   private loadQuestions(questionsDir: string): void {
-    const files = readdirSync(questionsDir).filter((f) => f.endsWith(".json"))
+    // Sorted: `readdirSync` order is unspecified — hash-ordered on ext4 with
+    // dir_index, roughly lexicographic on APFS/NTFS — and this order decides
+    // which questions a `--limit N` or sampled run actually covers. Without the
+    // sort the same command benchmarks a different subset on a different
+    // machine, and that difference is indistinguishable from a provider
+    // difference.
+    const files = readdirSync(questionsDir)
+      .filter((f) => f.endsWith(".json"))
+      .sort()
+
+    // Reset first so `load()` is idempotent. The server caches benchmark
+    // instances, and a second `load()` would otherwise append a duplicate copy
+    // of every question.
+    this.data = []
+    this.questions = []
+    this.sessionsMap.clear()
 
     for (const file of files) {
       const item: LongMemEvalItem = JSON.parse(readFileSync(join(questionsDir, file), "utf8"))
