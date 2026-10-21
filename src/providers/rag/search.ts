@@ -165,6 +165,10 @@ interface BM25Index {
   invertedIndex: Map<string, Map<string, number>>
   /** Document lengths (in tokens) */
   docLengths: Map<string, number>
+  /** Distinct terms per document, so re-indexing can drop stale postings */
+  docTerms: Map<string, Set<string>>
+  /** Running sum of all document lengths */
+  totalLength: number
   /** Average document length */
   avgDocLength: number
   /** Total number of documents */
@@ -175,22 +179,44 @@ function createBM25Index(): BM25Index {
   return {
     invertedIndex: new Map(),
     docLengths: new Map(),
+    docTerms: new Map(),
+    totalLength: 0,
     avgDocLength: 0,
     docCount: 0,
   }
 }
 
+function removeFromBM25Index(index: BM25Index, chunkId: string): void {
+  const docLength = index.docLengths.get(chunkId)
+  if (docLength === undefined) return
+
+  for (const term of index.docTerms.get(chunkId) || []) {
+    const postings = index.invertedIndex.get(term)
+    if (!postings) continue
+    postings.delete(chunkId)
+    if (postings.size === 0) index.invertedIndex.delete(term)
+  }
+
+  index.docTerms.delete(chunkId)
+  index.docLengths.delete(chunkId)
+  index.docCount--
+  index.totalLength -= docLength
+  index.avgDocLength = index.docCount > 0 ? index.totalLength / index.docCount : 0
+}
+
 function addToBM25Index(index: BM25Index, chunkId: string, text: string): void {
+  // Chunk IDs are deterministic, so a forced or resumed ingest re-adds the same
+  // ID. Replace the existing entry instead of appending to it, otherwise
+  // docCount drifts above docLengths.size and skews both idf and avgDocLength.
+  removeFromBM25Index(index, chunkId)
+
   const tokens = tokenize(text)
   index.docLengths.set(chunkId, tokens.length)
   index.docCount++
 
-  // Update average document length
-  let totalLength = 0
-  for (const len of index.docLengths.values()) {
-    totalLength += len
-  }
-  index.avgDocLength = totalLength / index.docCount
+  // Update average document length from a running total, not a full rescan
+  index.totalLength += tokens.length
+  index.avgDocLength = index.totalLength / index.docCount
 
   // Build term frequency map
   const termFreqs = new Map<string, number>()
@@ -205,6 +231,7 @@ function addToBM25Index(index: BM25Index, chunkId: string, text: string): void {
     }
     index.invertedIndex.get(term)!.set(chunkId, freq)
   }
+  index.docTerms.set(chunkId, new Set(termFreqs.keys()))
 }
 
 function searchBM25(index: BM25Index, query: string): Map<string, number> {
