@@ -46,6 +46,7 @@ bun run src/index.ts run -p supermemory -b locomo
 ```bash
 # Providers (at least one)
 SUPERMEMORY_API_KEY=
+SUPERMEMORY_BASE_URL=https://api.supermemory.ai
 MEM0_API_KEY=
 ZEP_API_KEY=
 
