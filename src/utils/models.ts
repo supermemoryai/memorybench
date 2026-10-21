@@ -241,61 +241,63 @@ export function getModelConfig(alias: string): ModelConfig {
     return MODEL_CONFIGS[lowerAlias]
   }
 
-  // Fallback for unknown models - try to infer from prefix
+  // Fallback for unknown models - try to infer from prefix. Match on lowerAlias
+  // throughout: matching the caller's casing here would send `GPT-4.1` past every
+  // branch into a guess, and providers reject a mis-cased model id anyway.
   if (
-    alias.startsWith("gpt-5") ||
-    alias.startsWith("o1") ||
-    alias.startsWith("o3") ||
-    alias.startsWith("o4")
+    lowerAlias.startsWith("gpt-5") ||
+    lowerAlias.startsWith("o1") ||
+    lowerAlias.startsWith("o3") ||
+    lowerAlias.startsWith("o4")
   ) {
     return {
-      id: alias,
+      id: lowerAlias,
       provider: "openai",
-      displayName: alias,
+      displayName: lowerAlias,
       supportsTemperature: false,
       defaultTemperature: 1,
       maxTokensParam: "max_completion_tokens",
       defaultMaxTokens: 1000,
     }
   }
-  if (alias.startsWith("gpt-")) {
+  if (lowerAlias.startsWith("gpt-")) {
     return {
-      id: alias,
+      id: lowerAlias,
       provider: "openai",
-      displayName: alias,
+      displayName: lowerAlias,
       supportsTemperature: true,
       defaultTemperature: 0,
       maxTokensParam: "maxTokens",
       defaultMaxTokens: 1000,
     }
   }
-  if (alias.startsWith("claude-")) {
+  if (lowerAlias.startsWith("claude-")) {
     return {
-      id: alias,
+      id: lowerAlias,
       provider: "anthropic",
-      displayName: alias,
+      displayName: lowerAlias,
       supportsTemperature: true,
       defaultTemperature: 0,
       maxTokensParam: "maxTokens",
       defaultMaxTokens: 1000,
     }
   }
-  if (alias.startsWith("gemini-3")) {
+  if (lowerAlias.startsWith("gemini-3")) {
     return {
-      id: alias,
+      id: lowerAlias,
       provider: "google",
-      displayName: alias,
+      displayName: lowerAlias,
       supportsTemperature: true,
       defaultTemperature: 1,
       maxTokensParam: "maxTokens",
       defaultMaxTokens: 1000,
     }
   }
-  if (alias.startsWith("gemini-")) {
+  if (lowerAlias.startsWith("gemini-")) {
     return {
-      id: alias,
+      id: lowerAlias,
       provider: "google",
-      displayName: alias,
+      displayName: lowerAlias,
       supportsTemperature: true,
       defaultTemperature: 0,
       maxTokensParam: "maxTokens",
@@ -303,16 +305,15 @@ export function getModelConfig(alias: string): ModelConfig {
     }
   }
 
-  // Default fallback
-  return {
-    id: alias,
-    provider: "openai",
-    displayName: alias,
-    supportsTemperature: true,
-    defaultTemperature: 0,
-    maxTokensParam: "maxTokens",
-    defaultMaxTokens: 1000,
-  }
+  // No registry entry and no recognisable provider prefix: the provider genuinely
+  // cannot be inferred. Defaulting to OpenAI here used to route a typo'd Anthropic
+  // or Google alias to OpenAI under the user's original spelling, surfacing as a
+  // 401/404 from the wrong provider deep in the evaluate phase.
+  throw new Error(
+    `Unknown model "${alias}". It is not a registered alias and does not start with ` +
+      `a recognised provider prefix (gpt-, o1/o3/o4, claude-, gemini-), so its ` +
+      `provider cannot be determined. Available models: ${listAvailableModels().join(", ")}`
+  )
 }
 
 // Legacy exports for backward compatibility
