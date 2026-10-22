@@ -15,7 +15,9 @@ import { logger } from "../../utils/logger"
 
 const REPORTS_DIR = "./data/runs"
 
-function aggregateRetrievalMetrics(metrics: RetrievalMetrics[]): RetrievalAggregates | undefined {
+export function aggregateRetrievalMetrics(
+  metrics: RetrievalMetrics[]
+): RetrievalAggregates | undefined {
   if (metrics.length === 0) return undefined
 
   const sum = metrics.reduce(
@@ -26,9 +28,19 @@ function aggregateRetrievalMetrics(metrics: RetrievalMetrics[]): RetrievalAggreg
       f1AtK: acc.f1AtK + m.f1AtK,
       mrr: acc.mrr + m.mrr,
       ndcg: acc.ndcg + m.ndcg,
-      k: m.k,
+      k: Math.max(acc.k, m.k),
+      underfilledCount: acc.underfilledCount + (m.retrievedCount < m.k ? 1 : 0),
     }),
-    { hitAtK: 0, precisionAtK: 0, recallAtK: 0, f1AtK: 0, mrr: 0, ndcg: 0, k: 10 }
+    {
+      hitAtK: 0,
+      precisionAtK: 0,
+      recallAtK: 0,
+      f1AtK: 0,
+      mrr: 0,
+      ndcg: 0,
+      k: 0,
+      underfilledCount: 0,
+    }
   )
 
   const n = metrics.length
@@ -40,6 +52,7 @@ function aggregateRetrievalMetrics(metrics: RetrievalMetrics[]): RetrievalAggreg
     mrr: sum.mrr / n,
     ndcg: sum.ndcg / n,
     k: sum.k,
+    underfilledCount: sum.underfilledCount,
   }
 }
 
@@ -199,8 +212,7 @@ export function generateReport(benchmark: Benchmark, checkpoint: RunCheckpoint):
     if (qCheckpoint.phases.evaluate.status !== "completed") continue
     const answerPhase = qCheckpoint.phases.answer
     if (answerPhase.promptTokens != null) allPromptTokens.push(answerPhase.promptTokens)
-    if (answerPhase.basePromptTokens != null)
-      allBasePromptTokens.push(answerPhase.basePromptTokens)
+    if (answerPhase.basePromptTokens != null) allBasePromptTokens.push(answerPhase.basePromptTokens)
     if (answerPhase.contextTokens != null) allContextTokens.push(answerPhase.contextTokens)
   }
 
@@ -368,6 +380,9 @@ export function printReport(result: BenchmarkResult): void {
     console.log(`  F1:         ${(result.retrieval.f1AtK * 100).toFixed(1)}%`)
     console.log(`  MRR:        ${result.retrieval.mrr.toFixed(3)}`)
     console.log(`  NDCG:       ${result.retrieval.ndcg.toFixed(3)}`)
+    console.log(
+      `  Under-filled: ${result.retrieval.underfilledCount}/${result.summary.totalQuestions} questions returned fewer results than K`
+    )
   }
 
   console.log("-".repeat(60))

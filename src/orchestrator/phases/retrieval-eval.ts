@@ -102,7 +102,8 @@ export async function calculateRetrievalMetrics(
       f1AtK: 0,
       mrr: 0,
       ndcg: 0,
-      k: 0,
+      k,
+      retrievedCount: 0,
       relevantRetrieved: 0,
       totalRelevant: 1,
     }
@@ -140,7 +141,8 @@ export async function calculateRetrievalMetrics(
     f1AtK,
     mrr,
     ndcg,
-    k: resultsToEval.length,
+    k,
+    retrievedCount: resultsToEval.length,
     relevantRetrieved,
     totalRelevant,
   }

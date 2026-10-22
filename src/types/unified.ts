@@ -38,6 +38,7 @@ export interface RetrievalMetrics {
   mrr: number
   ndcg: number
   k: number
+  retrievedCount: number
   relevantRetrieved: number
   totalRelevant: number
 }
@@ -50,6 +51,7 @@ export interface RetrievalAggregates {
   mrr: number
   ndcg: number
   k: number
+  underfilledCount: number
 }
 
 export interface EvaluationResult {
