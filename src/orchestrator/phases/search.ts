@@ -55,11 +55,14 @@ export async function runSearchPhase(
       })
 
       try {
-        const results = await provider.search(question.question, {
-          containerTag,
-          limit: benchmark.searchLimit ?? 10,
-          threshold: 0.3,
-        })
+        // Agentic runs search with tools in the answer phase, so skip the unused fixed search
+        const results = checkpoint.answerMode
+          ? []
+          : await provider.search(question.question, {
+              containerTag,
+              limit: benchmark.searchLimit ?? 10,
+              threshold: 0.3,
+            })
 
         const durationMs = Date.now() - startTime
         const resultFile = join(resultsDir, `${question.questionId}.json`)

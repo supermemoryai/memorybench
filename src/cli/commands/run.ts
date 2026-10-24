@@ -25,10 +25,12 @@ interface RunArgs {
   fromPhase?: PhaseId
   concurrency?: ConcurrencyConfig
   providerConfig?: Record<string, unknown>
+  sourceRun?: string
+  answerMode?: "agentic" | "agentic-memories"
 }
 
 /** Accepts inline JSON or a path to a JSON file */
-function parseProviderConfig(value: string): Record<string, unknown> | null {
+export function parseProviderConfig(value: string): Record<string, unknown> | null {
   try {
     const raw = value.trim().startsWith("{")
       ? value
@@ -106,6 +108,15 @@ export function parseRunArgs(args: string[]): RunArgs | null {
         return null
       }
       parsed.providerConfig = providerConfig
+    } else if (arg === "--source-run") {
+      parsed.sourceRun = args[++i]
+    } else if (arg === "--answer-mode") {
+      const mode = args[++i]
+      if (mode !== "agentic" && mode !== "agentic-memories") {
+        logger.error(`Invalid answer mode: ${mode}. Valid modes: agentic, agentic-memories`)
+        return null
+      }
+      parsed.answerMode = mode
     }
   }
 
@@ -157,6 +168,12 @@ export async function runCommand(args: string[]): Promise<void> {
     console.log(
       "  --provider-config X    Provider settings as JSON or a JSON file path (stored with the run)"
     )
+    console.log(
+      "  --source-run ID        Start a new run from ID's ingested data (search onwards); --provider-config overrides its settings"
+    )
+    console.log(
+      "  --answer-mode M        With --source-run: agentic (answering model searches with tools) or agentic-memories (memories and profile only)"
+    )
     console.log("")
     console.log(`Available models: ${listAvailableModels().join(", ")}`)
     return
@@ -190,9 +207,44 @@ export async function runCommand(args: string[]): Promise<void> {
     if (parsed.providerConfig) {
       logger.warn("Ignoring --provider-config: a continued run keeps the settings it started with")
     }
+    if (parsed.answerMode && parsed.answerMode !== checkpoint.answerMode) {
+      logger.warn(
+        `Ignoring --answer-mode: a continued run keeps its answer mode (${checkpoint.answerMode ?? "standard"})`
+      )
+    }
 
     logger.info(`Continuing run ${parsed.runId} (${checkpoint.provider}/${checkpoint.benchmark})`)
+  } else if (parsed.sourceRun) {
+    // New run on another run's ingested containers: copy it and redo search onwards
+    const source = checkpointManager.load(parsed.sourceRun)
+    if (!source) {
+      logger.error(`No run found: ${parsed.sourceRun}`)
+      return
+    }
+    parsed.provider = source.provider
+    parsed.benchmark = source.benchmark
+    parsed.judgeModel = parsed.judgeModel || source.judge
+    parsed.answeringModel = parsed.answeringModel || source.answeringModel
+    const copy = checkpointManager.copyCheckpoint(
+      parsed.sourceRun,
+      parsed.runId,
+      parsed.fromPhase || "search",
+      { judge: parsed.judgeModel, answeringModel: parsed.answeringModel }
+    )
+    copy.providerConfig = { ...source.providerConfig, ...parsed.providerConfig }
+    if (parsed.answerMode) copy.answerMode = parsed.answerMode
+    checkpointManager.save(copy)
+    // Saves are queued; the orchestrator must find the copy on disk
+    await checkpointManager.flush(parsed.runId)
+    parsed.fromPhase = parsed.fromPhase || "search"
   } else {
+    if (parsed.answerMode) {
+      logger.error(
+        "--answer-mode needs --source-run (agentic answering runs on ingested containers)"
+      )
+      return
+    }
+
     // New run - provider and benchmark required
     if (!parsed.provider || !parsed.benchmark) {
       logger.error("New run requires -p/--provider and -b/--benchmark")

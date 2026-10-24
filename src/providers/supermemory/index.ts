@@ -148,12 +148,16 @@ export class SupermemoryProvider implements Provider {
     const completedIds: string[] = []
     const failedIds: string[] = []
     let backoffMs = 2000
+    const startedAt = Date.now()
+    const lastStatus = new Map<string, string>()
 
     onProgress?.({ completedIds: [], failedIds: [], total })
 
     while (pending.size > 0) {
+      // Check a rotating slice so a big container doesn't eat the org's request rate limit
+      const batch = Array.from(pending).slice(0, 25)
       const checks = await Promise.allSettled(
-        Array.from(pending).map(async (id) => {
+        batch.map(async (id) => {
           const doc = await this.request<{ system?: { status?: string } }>(
             "GET",
             `/ns/${namespace}/document/${encodeURIComponent(id)}`
@@ -171,30 +175,74 @@ export class SupermemoryProvider implements Provider {
         })
       )
 
-      for (const check of checks) {
-        if (check.status !== "fulfilled") continue
+      for (const [i, check] of checks.entries()) {
+        if (check.status !== "fulfilled") {
+          // Move failed checks to the back too, so they can't hold the slice forever
+          pending.delete(batch[i])
+          pending.add(batch[i])
+          continue
+        }
         const { id, status } = check.value
+        if (lastStatus.get(id) !== status) {
+          const elapsed = ((Date.now() - startedAt) / 1000).toFixed(0)
+          logger.info(
+            `[${namespace}] ${id}: ${lastStatus.get(id) ?? "start"} -> ${status} (+${elapsed}s)`
+          )
+          lastStatus.set(id, status)
+        }
         if (status === "done") {
           pending.delete(id)
           completedIds.push(id)
         } else if (status === "failed" || status === "error") {
           pending.delete(id)
           failedIds.push(id)
+        } else {
+          // Move to the back so the next round checks other documents first
+          pending.delete(id)
+          pending.add(id)
         }
+      }
+
+      // Optional cap so one document stuck in memory extraction can't hold up a run forever
+      const timeoutMinutes = Number(process.env.MEMORYBENCH_INDEXING_TIMEOUT_MINUTES) || 0
+      if (pending.size > 0 && timeoutMinutes && Date.now() - startedAt > timeoutMinutes * 60_000) {
+        logger.warn(
+          `[${namespace}] ${pending.size} documents not ready after ${timeoutMinutes} min, counting them as failed: ${[...pending].join(", ")}`
+        )
+        failedIds.push(...pending)
+        pending.clear()
       }
 
       onProgress?.({ completedIds: [...completedIds], failedIds: [...failedIds], total })
       if (pending.size > 0) {
         await new Promise((r) => setTimeout(r, backoffMs))
-        backoffMs = Math.min(backoffMs * 1.2, 10000)
+        backoffMs = Math.min(backoffMs * 1.2, 30000)
       }
     }
 
     if (failedIds.length > 0) logger.warn(`${failedIds.length} documents failed indexing`)
+
+    // Best-effort and 25 at a time: this only feeds the log line below
+    const memories: (number | string)[] = []
+    for (let i = 0; i < completedIds.length; i += 25) {
+      const counts = await Promise.allSettled(
+        completedIds.slice(i, i + 25).map(async (id) => {
+          const doc = await this.request<{ memories?: unknown[] }>(
+            "GET",
+            `/ns/${namespace}/document/${encodeURIComponent(id)}?include=memories`
+          )
+          return doc.memories?.length ?? 0
+        })
+      )
+      memories.push(...counts.map((c) => (c.status === "fulfilled" ? c.value : "?")))
+    }
+    logger.info(
+      `[${namespace}] ${completedIds.length}/${total} documents ready in ${((Date.now() - startedAt) / 1000).toFixed(0)}s, memories per document: ${memories.join(", ")}`
+    )
   }
 
   async search(query: string, options: SearchOptions): Promise<unknown[]> {
-    const s = this.settings
+    const s = { ...this.settings, ...(options.settings as SupermemorySettings | undefined) }
     const response = await this.request<{ results?: unknown[] }>(
       "POST",
       `/ns/${toNamespace(options.containerTag)}/search`,
@@ -209,6 +257,16 @@ export class SupermemoryProvider implements Provider {
       }
     )
     return response.results || []
+  }
+
+  async profile(containerTag: string): Promise<{ static: string[]; dynamic: string[] }> {
+    const { profile } = await this.request<{
+      profile?: { static?: { memory: string }[]; dynamic?: { memory: string }[] }
+    }>("POST", `/ns/${toNamespace(containerTag)}/profile`, {})
+    return {
+      static: (profile?.static ?? []).map((m) => m.memory),
+      dynamic: (profile?.dynamic ?? []).map((m) => m.memory),
+    }
   }
 
   async clear(containerTag: string): Promise<void> {

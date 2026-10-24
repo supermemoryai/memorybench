@@ -55,6 +55,15 @@ export interface SearchPhaseCheckpoint {
 export interface AnswerPhaseCheckpoint {
   status: PhaseStatus
   hypothesis?: string
+  /** Agentic answering: each tool call the model made, and every distinct result it saw */
+  agentCalls?: {
+    tool: string
+    args: Record<string, unknown>
+    resultIds: string[]
+    resultCount: number
+    durationMs?: number
+  }[]
+  agentRetrieved?: unknown[]
   promptTokens?: number
   basePromptTokens?: number
   contextTokens?: number
@@ -127,5 +136,7 @@ export interface RunCheckpoint {
   concurrency?: ConcurrencyConfig
   /** Provider settings for this run (e.g. search limit, threshold), applied on every resume */
   providerConfig?: Record<string, unknown>
+  /** "agentic": the answering model searches through tools; "agentic-memories": same, memories and profile only */
+  answerMode?: "agentic" | "agentic-memories"
   questions: Record<string, QuestionCheckpoint>
 }

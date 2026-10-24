@@ -17,6 +17,8 @@ export interface SearchOptions {
   containerTag: string
   limit?: number
   threshold?: number
+  /** Per-call provider settings that override the run's (used by agentic answering) */
+  settings?: Record<string, unknown>
 }
 
 export interface IngestResult {
@@ -44,6 +46,8 @@ export interface Provider {
     onProgress?: IndexingProgressCallback
   ): Promise<void>
   search(query: string, options: SearchOptions): Promise<unknown[]>
+  /** Memory profile for a container, when the provider has one */
+  profile?(containerTag: string): Promise<{ static: string[]; dynamic: string[] }>
   clear(containerTag: string): Promise<void>
 }
 
