@@ -11,6 +11,7 @@ export interface AgentToolCall {
   args: Record<string, unknown>
   resultIds: string[]
   resultCount: number
+  durationMs?: number
 }
 
 export interface AgentAnswer {
@@ -110,8 +111,10 @@ export async function answerWithAgent(input: {
           limit: limit ?? 10,
           ...(rerank ? { rerank } : {}),
           ...(rewrite !== undefined ? { rewriteQuery: rewrite } : {}),
-          ...(include_related ? { include: { related: true } } : {}),
+          // Always set, so a run-level include can't override what the agent asked for
+          include: { related: !!include_related },
         }
+        const startedAt = Date.now()
         const results = (await provider.search(query, { containerTag, settings })) as V5Result[]
         for (const r of results) if (r.id && !seen.has(r.id)) seen.set(r.id, r)
         calls.push({
@@ -119,6 +122,7 @@ export async function answerWithAgent(input: {
           args: { query, ...settings },
           resultIds: results.map((r) => r.id ?? ""),
           resultCount: results.length,
+          durationMs: Date.now() - startedAt,
         })
         const text = formatResults(results)
         contextChars += text.length
@@ -161,11 +165,15 @@ export async function answerWithAgent(input: {
   })
 
   let text = result.text.trim()
+  let usage: AgentAnswer["usage"] = result.totalUsage ?? {}
   if (!text) {
     // The step budget ran out on a tool call: ask for the answer from what was found
+    // tools stay defined (but unusable) because the history holds tool calls and results
     const final = await generateText({
       model: input.model,
       system: systemPrompt(memoriesOnly, input.rules),
+      tools,
+      toolChoice: "none",
       messages: [
         { role: "user", content: `Question: ${input.question.question}` },
         ...result.response.messages,
@@ -175,6 +183,11 @@ export async function answerWithAgent(input: {
       ...(input.temperature !== undefined ? { temperature: input.temperature } : {}),
     })
     text = final.text.trim()
+    usage = {
+      inputTokens: (usage.inputTokens ?? 0) + (final.totalUsage?.inputTokens ?? 0),
+      outputTokens: (usage.outputTokens ?? 0) + (final.totalUsage?.outputTokens ?? 0),
+      totalTokens: (usage.totalTokens ?? 0) + (final.totalUsage?.totalTokens ?? 0),
+    }
   }
 
   return {
@@ -182,6 +195,6 @@ export async function answerWithAgent(input: {
     calls,
     retrieved: [...seen.values()],
     contextTokensApprox: Math.round(contextChars / 4),
-    usage: result.totalUsage ?? {},
+    usage,
   }
 }

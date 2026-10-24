@@ -108,13 +108,20 @@ export function generateReport(benchmark: Benchmark, checkpoint: RunCheckpoint):
 
     const ingestDurationMs = ingestPhase.durationMs || 0
     const indexingDurationMs = indexingPhase.durationMs || 0
-    const searchDurationMs = searchPhase.durationMs || 0
+    // Agentic runs: the agent's own searches, averaged per call
+    const agentSearchMs = (answerPhase.agentCalls ?? []).flatMap((c) =>
+      c.tool === "search_memories" && c.durationMs !== undefined ? [c.durationMs] : []
+    )
+    const searchDurationMs = agentSearchMs.length
+      ? Math.round(agentSearchMs.reduce((a, b) => a + b, 0) / agentSearchMs.length)
+      : searchPhase.durationMs || 0
     const answerDurationMs = answerPhase.durationMs || 0
     const evaluateDurationMs = evalPhase.durationMs || 0
     const totalDurationMs =
       ingestDurationMs +
       indexingDurationMs +
-      searchDurationMs +
+      // Agentic search time is already inside the answer phase
+      (searchPhase.durationMs || 0) +
       answerDurationMs +
       evaluateDurationMs
 
@@ -129,7 +136,7 @@ export function generateReport(benchmark: Benchmark, checkpoint: RunCheckpoint):
       explanation: evalPhase.explanation || "",
       hypothesis: answerPhase.hypothesis || "",
       groundTruth: question.groundTruth,
-      searchResults: searchPhase.results || [],
+      searchResults: answerPhase.agentRetrieved ?? searchPhase.results ?? [],
       searchDurationMs,
       answerDurationMs,
       totalDurationMs,
@@ -142,7 +149,7 @@ export function generateReport(benchmark: Benchmark, checkpoint: RunCheckpoint):
 
     if (ingestPhase.durationMs) ingestDurations.push(ingestPhase.durationMs)
     if (indexingPhase.durationMs) indexingDurations.push(indexingPhase.durationMs)
-    if (searchPhase.durationMs) searchDurations.push(searchPhase.durationMs)
+    if (searchDurationMs) searchDurations.push(searchDurationMs)
     if (answerPhase.durationMs) answerDurations.push(answerPhase.durationMs)
     if (evalPhase.durationMs) evaluateDurations.push(evalPhase.durationMs)
     if (totalDurationMs > 0) totalDurations.push(totalDurationMs)

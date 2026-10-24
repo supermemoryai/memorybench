@@ -54,7 +54,9 @@ export async function runEvaluatePhase(
       })
 
       try {
-        const searchResults = checkpoint.questions[question.questionId].phases.search.results || []
+        // Agentic runs: score retrieval on what the agent actually saw
+        const phases = checkpoint.questions[question.questionId].phases
+        const searchResults = phases.answer.agentRetrieved ?? phases.search.results ?? []
 
         const [result, retrievalMetrics] = await Promise.all([
           benchmark.evaluateAnswer

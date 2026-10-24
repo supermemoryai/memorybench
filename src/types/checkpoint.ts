@@ -61,6 +61,7 @@ export interface AnswerPhaseCheckpoint {
     args: Record<string, unknown>
     resultIds: string[]
     resultCount: number
+    durationMs?: number
   }[]
   agentRetrieved?: unknown[]
   promptTokens?: number

@@ -37,10 +37,9 @@ async function judgeNugget(
     ...judgeSettings(model),
     maxRetries: 3,
   })
-  if (![0, 0.5, 1].includes(object.score)) {
-    throw new Error(`BEAM judge returned score ${object.score}, expected 0, 0.5 or 1`)
-  }
-  return object
+  // Snap off-scale scores (0.25, 0.75, ...) to the paper's 0 / 0.5 / 1 scale instead of failing the run
+  const score = Math.min(1, Math.max(0, Math.round(object.score * 2) / 2))
+  return { ...object, score }
 }
 
 /**

@@ -298,12 +298,9 @@ export function scoreAlignedBeamEvents(input: {
     input.alignments
   )
   const kendall = computeKendallTauB(rankVectors.referenceRanks, rankVectors.predictedRanks)
-  if (!Number.isFinite(kendall.tauB)) {
-    throw new Error(
-      "BEAM paper Kendall tau-b is undefined for degenerate rank vectors; refusing to invent a score"
-    )
-  }
-  const normalizedKendallTauB = (kendall.tauB + 1) / 2
+  // Tau-b is undefined (NaN, as in scipy) when one side is all ties, e.g. an answer that lists
+  // no events. There is no ordering to credit, so score 0 instead of stopping the run.
+  const normalizedKendallTauB = Number.isFinite(kendall.tauB) ? (kendall.tauB + 1) / 2 : 0
   const canonicalPredictedEvents = input.predictedEvents.map((predictedEvent, predictedIndex) => {
     const alignment = input.alignments.find(
       (candidate) => candidate.predictedIndex === predictedIndex

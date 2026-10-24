@@ -207,6 +207,11 @@ export async function runCommand(args: string[]): Promise<void> {
     if (parsed.providerConfig) {
       logger.warn("Ignoring --provider-config: a continued run keeps the settings it started with")
     }
+    if (parsed.answerMode && parsed.answerMode !== checkpoint.answerMode) {
+      logger.warn(
+        `Ignoring --answer-mode: a continued run keeps its answer mode (${checkpoint.answerMode ?? "standard"})`
+      )
+    }
 
     logger.info(`Continuing run ${parsed.runId} (${checkpoint.provider}/${checkpoint.benchmark})`)
   } else if (parsed.sourceRun) {
@@ -233,6 +238,13 @@ export async function runCommand(args: string[]): Promise<void> {
     await checkpointManager.flush(parsed.runId)
     parsed.fromPhase = parsed.fromPhase || "search"
   } else {
+    if (parsed.answerMode) {
+      logger.error(
+        "--answer-mode needs --source-run (agentic answering runs on ingested containers)"
+      )
+      return
+    }
+
     // New run - provider and benchmark required
     if (!parsed.provider || !parsed.benchmark) {
       logger.error("New run requires -p/--provider and -b/--benchmark")

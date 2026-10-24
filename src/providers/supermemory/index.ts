@@ -175,8 +175,13 @@ export class SupermemoryProvider implements Provider {
         })
       )
 
-      for (const check of checks) {
-        if (check.status !== "fulfilled") continue
+      for (const [i, check] of checks.entries()) {
+        if (check.status !== "fulfilled") {
+          // Move failed checks to the back too, so they can't hold the slice forever
+          pending.delete(batch[i])
+          pending.add(batch[i])
+          continue
+        }
         const { id, status } = check.value
         if (lastStatus.get(id) !== status) {
           const elapsed = ((Date.now() - startedAt) / 1000).toFixed(0)
@@ -217,15 +222,20 @@ export class SupermemoryProvider implements Provider {
 
     if (failedIds.length > 0) logger.warn(`${failedIds.length} documents failed indexing`)
 
-    const memories = await Promise.all(
-      completedIds.map(async (id) => {
-        const doc = await this.request<{ memories?: unknown[] }>(
-          "GET",
-          `/ns/${namespace}/document/${encodeURIComponent(id)}?include=memories`
-        )
-        return doc.memories?.length ?? 0
-      })
-    )
+    // Best-effort and 25 at a time: this only feeds the log line below
+    const memories: (number | string)[] = []
+    for (let i = 0; i < completedIds.length; i += 25) {
+      const counts = await Promise.allSettled(
+        completedIds.slice(i, i + 25).map(async (id) => {
+          const doc = await this.request<{ memories?: unknown[] }>(
+            "GET",
+            `/ns/${namespace}/document/${encodeURIComponent(id)}?include=memories`
+          )
+          return doc.memories?.length ?? 0
+        })
+      )
+      memories.push(...counts.map((c) => (c.status === "fulfilled" ? c.value : "?")))
+    }
     logger.info(
       `[${namespace}] ${completedIds.length}/${total} documents ready in ${((Date.now() - startedAt) / 1000).toFixed(0)}s, memories per document: ${memories.join(", ")}`
     )
