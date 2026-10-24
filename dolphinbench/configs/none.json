@@ -1,0 +1,18 @@
+{
+  "agent": {
+    "model": "gpt-5.6-luna",
+    "api": "responses",
+    "base_url": "https://api.openai.com/v1",
+    "api_key_env": "OPENAI_API_KEY",
+    "reasoning_effort": "high",
+    "max_turns": 60,
+    "prices_per_1m": {
+      "input": 0.2,
+      "cached_input": 0.02,
+      "output": 1.2
+    }
+  },
+  "memory": {
+    "provider": "none"
+  }
+}
