@@ -1,20 +1,18 @@
 import type { RetrievalMetrics } from "../../types/unified"
 import type { LanguageModel } from "ai"
 import { generateText } from "ai"
+import { z } from "zod"
 
-interface RelevanceResult {
-  id: string
-  relevant: 0 | 1
-}
+const RelevanceResults = z.array(
+  z.object({ id: z.string(), relevant: z.union([z.literal(0), z.literal(1)]) })
+)
 
 async function evaluateAllChunks(
   model: LanguageModel,
   question: string,
   groundTruth: string,
   searchResults: unknown[]
-): Promise<RelevanceResult[]> {
-  if (searchResults.length === 0) return []
-
+): Promise<number[]> {
   const formattedResults = searchResults
     .map((result, index) => {
       const id = `result_${index + 1}`
@@ -51,22 +49,35 @@ Where:
 
 Return ONLY the JSON array, no other text.`
 
+  const response = await generateText({
+    model,
+    messages: [{ role: "user", content: prompt }],
+  })
+
+  const jsonMatch = response.text.match(/\[[\s\S]*\]/)
+  if (!jsonMatch) throw new Error("Retrieval judge returned no JSON array")
+
+  let decoded: unknown
   try {
-    const response = await generateText({
-      model,
-      messages: [{ role: "user", content: prompt }],
-    })
-
-    const jsonMatch = response.text.match(/\[[\s\S]*\]/)
-    if (!jsonMatch) {
-      return searchResults.map((_, i) => ({ id: `result_${i + 1}`, relevant: 0 as const }))
-    }
-
-    const parsed = JSON.parse(jsonMatch[0]) as RelevanceResult[]
-    return parsed
+    decoded = JSON.parse(jsonMatch[0])
   } catch {
-    return searchResults.map((_, i) => ({ id: `result_${i + 1}`, relevant: 0 as const }))
+    throw new Error("Retrieval judge returned invalid JSON")
   }
+  const verdicts = RelevanceResults.safeParse(decoded)
+  if (!verdicts.success) throw new Error("Retrieval judge returned invalid relevance verdicts")
+
+  const labels = verdicts.data
+  const byId = new Map(labels.map(({ id, relevant }) => [id, relevant]))
+  if (labels.length !== searchResults.length || byId.size !== searchResults.length) {
+    throw new Error("Retrieval judge must return one verdict for each search result")
+  }
+  return searchResults.map((_, i) => {
+    const id = `result_${i + 1}`
+    const relevant = byId.get(id)
+    if (relevant === undefined)
+      throw new Error(`Retrieval judge did not return a verdict for ${id}`)
+    return relevant
+  })
 }
 
 function calculateNDCG(relevanceScores: number[], idealRelevant: number): number {
@@ -108,13 +119,7 @@ export async function calculateRetrievalMetrics(
     }
   }
 
-  const relevanceResults = await evaluateAllChunks(model, question, groundTruth, resultsToEval)
-
-  const relevanceScores = resultsToEval.map((_, i) => {
-    const id = `result_${i + 1}`
-    const result = relevanceResults.find((r) => r.id === id)
-    return result?.relevant === 1 ? 1 : 0
-  })
+  const relevanceScores = await evaluateAllChunks(model, question, groundTruth, resultsToEval)
 
   const relevantRetrieved = relevanceScores.filter((r) => r === 1).length
   const totalRelevant = Math.max(1, relevantRetrieved)
