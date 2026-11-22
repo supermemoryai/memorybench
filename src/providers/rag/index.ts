@@ -208,6 +208,14 @@ export class RAGProvider implements Provider {
   async search(query: string, options: SearchOptions): Promise<unknown[]> {
     if (!this.openai) throw new Error("Provider not initialized")
 
+    const { containerTag, expectedDocumentIds } = options
+    if (expectedDocumentIds && !this.searchEngine.hasChunks(containerTag, expectedDocumentIds)) {
+      throw new Error(
+        `The in-memory RAG index for ${containerTag} is missing documents recorded in the checkpoint. Start a fresh run and execute ingestion and search in the same process.`
+      )
+    }
+    if (this.searchEngine.getChunkCount(containerTag) === 0) return []
+
     // Generate query embedding
     const embeddingModel = this.openai.embedding(EMBEDDING_MODEL)
     const { embedding: queryEmbedding } = await embed({
