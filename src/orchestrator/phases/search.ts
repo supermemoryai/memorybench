@@ -59,6 +59,8 @@ export async function runSearchPhase(
           containerTag,
           limit: benchmark.searchLimit ?? 10,
           threshold: 0.3,
+          expectedDocumentIds:
+            checkpoint.questions[question.questionId].phases.ingest.ingestResult?.documentIds,
         })
 
         const durationMs = Date.now() - startTime

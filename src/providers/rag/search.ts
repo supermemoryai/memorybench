@@ -356,6 +356,11 @@ export class HybridSearchEngine {
     this.containers.delete(containerTag)
   }
 
+  hasChunks(containerTag: string, documentIds: readonly string[]): boolean {
+    const container = this.containers.get(containerTag)
+    return documentIds.every((id) => container?.chunks.has(id))
+  }
+
   getChunkCount(containerTag: string): number {
     return this.containers.get(containerTag)?.chunks.size || 0
   }

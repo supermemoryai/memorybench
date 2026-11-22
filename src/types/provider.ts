@@ -17,6 +17,8 @@ export interface SearchOptions {
   containerTag: string
   limit?: number
   threshold?: number
+  /** Document IDs saved by ingestion, for providers that validate local state. */
+  expectedDocumentIds?: readonly string[]
 }
 
 export interface IngestResult {

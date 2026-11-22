@@ -125,6 +125,9 @@ bun run src/index.ts show-failures -r my-test
 
 Each phase checkpoints independently. Failed runs resume from last successful point.
 
+The `rag` provider keeps its index in memory. Run its ingestion and search phases in the same
+process. If a restart removes the index, start a fresh run to rebuild it before searching.
+
 ## MemScore
 
 MemScore is a composite metric that captures three dimensions of provider performance in a single line:
