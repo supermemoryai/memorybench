@@ -55,3 +55,11 @@ Example: See `src/providers/zep/prompts.ts`
 | `supermemory` | `supermemory` | Raw JSON sessions |
 | `mem0` | `mem0ai` | v2 API with graph |
 | `zep` | `@getzep/zep-cloud` | Graph-based, custom prompts |
+
+### Supermemory indexing
+
+Each indexing wait has a 15-minute deadline per container, including status requests and retry
+delays. To set a different deadline for a new run, pass
+`--provider-config '{"indexingTimeoutMs": 1200000}'`. A timeout reports the pending document
+IDs. If a document's status check fails three consecutive times after request retries, indexing
+fails and records the document ID in the checkpoint.
