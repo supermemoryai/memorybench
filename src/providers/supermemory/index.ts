@@ -1,3 +1,4 @@
+import { setTimeout as delay } from "node:timers/promises"
 import type {
   Provider,
   ProviderConfig,
@@ -24,7 +25,12 @@ export interface SupermemorySettings {
   rerank?: "none" | "order" | "aggregate"
   rewriteQuery?: boolean
   include?: { documents?: boolean; related?: boolean }
+  /** Maximum wait per container for indexing, in milliseconds. */
+  indexingTimeoutMs?: number
 }
+
+const DEFAULT_INDEXING_TIMEOUT_MS = 15 * 60 * 1000
+const MAX_STATUS_CHECK_FAILURES = 3
 
 const SETTING_KEYS: (keyof SupermemorySettings)[] = [
   "supportingContext",
@@ -35,6 +41,7 @@ const SETTING_KEYS: (keyof SupermemorySettings)[] = [
   "rerank",
   "rewriteQuery",
   "include",
+  "indexingTimeoutMs",
 ]
 
 /** Namespaces allow [a-zA-Z0-9_:-], max 100 chars */
@@ -63,6 +70,16 @@ export class SupermemoryProvider implements Provider {
 
   async initialize(config: ProviderConfig): Promise<void> {
     if (!config.apiKey) throw new Error("SUPERMEMORY_API_KEY is not set")
+    const timeoutMs = config.indexingTimeoutMs
+    if (
+      timeoutMs !== undefined &&
+      (typeof timeoutMs !== "number" ||
+        !Number.isInteger(timeoutMs) ||
+        timeoutMs < 1 ||
+        timeoutMs > 2_147_483_647)
+    ) {
+      throw new Error("indexingTimeoutMs must be an integer from 1 to 2147483647")
+    }
     this.apiKey = config.apiKey
     if (config.baseUrl) this.baseUrl = config.baseUrl.replace(/\/$/, "")
     for (const key of SETTING_KEYS) {
@@ -78,12 +95,18 @@ export class SupermemoryProvider implements Provider {
     )
   }
 
-  private async request<T>(method: string, path: string, body?: unknown): Promise<T> {
+  private async request<T>(
+    method: string,
+    path: string,
+    body?: unknown,
+    signal?: AbortSignal
+  ): Promise<T> {
     for (let attempt = 0; ; attempt++) {
       const res = await fetch(`${this.baseUrl}${path}`, {
         method,
         headers: { Authorization: `Bearer ${this.apiKey}`, "Content-Type": "application/json" },
         body: body === undefined ? undefined : JSON.stringify(body),
+        signal,
       })
       if (res.ok) return (await res.json()) as T
       const text = await res.text()
@@ -94,7 +117,7 @@ export class SupermemoryProvider implements Provider {
           Number(text.match(/"retryAfterSeconds":\s*(\d+)/)?.[1]) ||
           0
         const waitMs = Math.max(asked * 1000, Math.min(1000 * 2 ** attempt, 30000))
-        await new Promise((r) => setTimeout(r, waitMs + Math.random() * 1000))
+        await delay(waitMs + Math.random() * 1000, undefined, { signal })
         continue
       }
       throw new Error(`Supermemory ${method} ${path} failed (${res.status}): ${text.slice(0, 300)}`)
@@ -147,47 +170,83 @@ export class SupermemoryProvider implements Provider {
     const pending = new Set(result.documentIds)
     const completedIds: string[] = []
     const failedIds: string[] = []
+    const checkFailures = new Map<string, number>()
+    const timeoutMs = this.settings.indexingTimeoutMs ?? DEFAULT_INDEXING_TIMEOUT_MS
+    const signal = AbortSignal.timeout(timeoutMs)
     let backoffMs = 2000
 
     onProgress?.({ completedIds: [], failedIds: [], total })
 
-    while (pending.size > 0) {
-      const checks = await Promise.allSettled(
-        Array.from(pending).map(async (id) => {
-          const doc = await this.request<{ system?: { status?: string } }>(
-            "GET",
-            `/ns/${namespace}/document/${encodeURIComponent(id)}`
-          )
-          let status = doc.system?.status || "unknown"
-          if (status === "done") {
-            // v5 "done" covers chunks only; memory extraction status is on the v3 document
-            const v3 = await this.request<{ dreamingStatus?: string }>(
+    try {
+      while (pending.size > 0) {
+        signal.throwIfAborted()
+        const ids = [...pending]
+        const checks = await Promise.allSettled(
+          ids.map(async (id) => {
+            const doc = await this.request<{ system?: { status?: string } }>(
               "GET",
-              `/v3/documents/${encodeURIComponent(id)}?namespace=${namespace}`
+              `/ns/${namespace}/document/${encodeURIComponent(id)}`,
+              undefined,
+              signal
             )
-            if (v3.dreamingStatus && v3.dreamingStatus !== "done") status = v3.dreamingStatus
-          }
-          return { id, status }
-        })
-      )
+            let status = doc.system?.status || "unknown"
+            if (status === "done") {
+              // v5 "done" covers chunks only; memory extraction status is on the v3 document
+              const v3 = await this.request<{ dreamingStatus?: string }>(
+                "GET",
+                `/v3/documents/${encodeURIComponent(id)}?namespace=${namespace}`,
+                undefined,
+                signal
+              )
+              if (v3.dreamingStatus && v3.dreamingStatus !== "done") status = v3.dreamingStatus
+            }
+            return status
+          })
+        )
 
-      for (const check of checks) {
-        if (check.status !== "fulfilled") continue
-        const { id, status } = check.value
-        if (status === "done") {
-          pending.delete(id)
-          completedIds.push(id)
-        } else if (status === "failed" || status === "error") {
-          pending.delete(id)
-          failedIds.push(id)
+        let statusError: Error | undefined
+        for (const [index, check] of checks.entries()) {
+          const id = ids[index]
+          if (check.status === "rejected") {
+            if (signal.aborted) continue
+            const failures = (checkFailures.get(id) ?? 0) + 1
+            checkFailures.set(id, failures)
+            if (failures >= MAX_STATUS_CHECK_FAILURES) {
+              pending.delete(id)
+              failedIds.push(id)
+              statusError ??= new Error(
+                `Indexing status for document ${id} in namespace ${namespace} failed ${failures} times: ${String(check.reason)}`,
+                { cause: check.reason }
+              )
+            }
+            continue
+          }
+
+          checkFailures.delete(id)
+          if (check.value === "done") {
+            pending.delete(id)
+            completedIds.push(id)
+          } else if (check.value === "failed" || check.value === "error") {
+            pending.delete(id)
+            failedIds.push(id)
+          }
+        }
+
+        onProgress?.({ completedIds: [...completedIds], failedIds: [...failedIds], total })
+        if (statusError) throw statusError
+        if (pending.size > 0) {
+          await delay(backoffMs, undefined, { signal })
+          backoffMs = Math.min(backoffMs * 1.2, 10000)
         }
       }
-
-      onProgress?.({ completedIds: [...completedIds], failedIds: [...failedIds], total })
-      if (pending.size > 0) {
-        await new Promise((r) => setTimeout(r, backoffMs))
-        backoffMs = Math.min(backoffMs * 1.2, 10000)
+    } catch (error) {
+      if (signal.aborted) {
+        throw new Error(
+          `Indexing timed out after ${timeoutMs}ms in namespace ${namespace}. Pending documents: ${[...pending].join(", ")}`,
+          { cause: error }
+        )
       }
+      throw error
     }
 
     if (failedIds.length > 0) logger.warn(`${failedIds.length} documents failed indexing`)
