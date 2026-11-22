@@ -27,7 +27,7 @@ export class OpenAIJudge implements Judge {
 
     const prompt = buildJudgePrompt(input)
 
-    const params: Record<string, unknown> = {
+    const params: Parameters<typeof generateText>[0] = {
       model: this.client(this.modelConfig.id),
       prompt,
     }
@@ -36,9 +36,9 @@ export class OpenAIJudge implements Judge {
       params.temperature = this.modelConfig.defaultTemperature
     }
 
-    params.maxTokens = this.modelConfig.defaultMaxTokens
+    params.maxOutputTokens = this.modelConfig.defaultMaxTokens
 
-    const { text } = await generateText(params as Parameters<typeof generateText>[0])
+    const { text } = await generateText(params)
 
     return parseJudgeResponse(text)
   }

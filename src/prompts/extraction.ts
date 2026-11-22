@@ -74,14 +74,14 @@ export async function extractMemories(
 ): Promise<string> {
   const prompt = buildExtractionPrompt(session)
 
-  const params: Record<string, unknown> = {
+  const params: Parameters<typeof generateText>[0] = {
     model: openai(EXTRACTION_MODEL),
     prompt,
-    maxTokens: 2000,
+    maxOutputTokens: 2000,
     temperature: 0,
   }
 
-  const { text } = await generateText(params as Parameters<typeof generateText>[0])
+  const { text } = await generateText(params)
 
   return text.trim()
 }
