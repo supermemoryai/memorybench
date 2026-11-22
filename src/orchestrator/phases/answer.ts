@@ -153,17 +153,17 @@ export async function runAnswerPhase(
         // custom prompt functions that transform context (e.g. Zep's XML-like tags).
         const contextTokens = Math.max(0, promptTokens - basePromptTokens)
 
-        const params: Record<string, unknown> = {
+        const params: Parameters<typeof generateText>[0] = {
           model: client(modelConfig.id),
           prompt,
-          maxTokens: modelConfig.defaultMaxTokens,
+          maxOutputTokens: modelConfig.defaultMaxTokens,
         }
 
         if (modelConfig.supportsTemperature) {
           params.temperature = modelConfig.defaultTemperature
         }
 
-        const { text } = await generateText(params as Parameters<typeof generateText>[0])
+        const { text } = await generateText(params)
 
         const durationMs = Date.now() - startTime
         checkpointManager.updatePhase(checkpoint, question.questionId, "answer", {
