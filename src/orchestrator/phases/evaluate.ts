@@ -25,7 +25,7 @@ export async function runEvaluatePhase(
     const status = checkpointManager.getPhaseStatus(checkpoint, q.questionId, "evaluate")
     const answerStatus = checkpointManager.getPhaseStatus(checkpoint, q.questionId, "answer")
     const hypothesis = checkpoint.questions[q.questionId]?.phases.answer.hypothesis
-    return status !== "completed" && answerStatus === "completed" && hypothesis
+    return status !== "completed" && answerStatus === "completed" && typeof hypothesis === "string"
   })
 
   if (pendingQuestions.length === 0) {
@@ -57,14 +57,16 @@ export async function runEvaluatePhase(
         const searchResults = checkpoint.questions[question.questionId].phases.search.results || []
 
         const [result, retrievalMetrics] = await Promise.all([
-          judge.evaluate({
-            question: question.question,
-            questionType: question.questionType,
-            groundTruth: question.groundTruth,
-            hypothesis,
-            providerPrompts: provider?.prompts,
-            promptOverride: benchmark.buildJudgePrompt?.({ question, hypothesis }),
-          }),
+          hypothesis.trim()
+            ? judge.evaluate({
+                question: question.question,
+                questionType: question.questionType,
+                groundTruth: question.groundTruth,
+                hypothesis,
+                providerPrompts: provider?.prompts,
+                promptOverride: benchmark.buildJudgePrompt?.({ question, hypothesis }),
+              })
+            : { score: 0, label: "incorrect" as const, explanation: "The answer was empty" },
           calculateRetrievalMetrics(
             judge.getModel(),
             question.question,
