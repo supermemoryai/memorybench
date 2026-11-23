@@ -1,7 +1,7 @@
 import type { ProviderName } from "../types/provider"
 import type { BenchmarkName } from "../types/benchmark"
 import type { SamplingConfig } from "../types/checkpoint"
-import type { BenchmarkResult } from "../types/unified"
+import type { BenchmarkResult, EvaluationResult } from "../types/unified"
 import { orchestrator, CheckpointManager } from "./index"
 import { createBenchmark } from "../benchmarks"
 import { logger } from "../utils/logger"
@@ -43,6 +43,13 @@ export interface CompareResult {
   manifest: CompareManifest
   successes: number
   failures: number
+}
+
+interface CompareRunCoverage {
+  provider: string
+  runId: string
+  matchedQuestions: number
+  issue?: string
 }
 
 function generateCompareId(): string {
@@ -259,22 +266,111 @@ export class BatchManager {
     }
   }
 
-  getReports(manifest: CompareManifest): Array<{ provider: string; report: BenchmarkResult }> {
+  getComparisonReport(manifest: CompareManifest): {
+    targetQuestionCount: number
+    coverage: CompareRunCoverage[]
+    reports: Array<{ provider: string; report: BenchmarkResult }>
+    unavailableReason?: string
+  } {
+    const plannedIds = manifest.targetQuestionIds ?? []
+    const targetIds = new Set(plannedIds)
+    const targetQuestionCount = targetIds.size
+    const coverage: CompareRunCoverage[] = []
     const reports: Array<{ provider: string; report: BenchmarkResult }> = []
-    for (const run of manifest.runs) {
-      const report = this.loadReport(run.runId)
-      if (report) {
-        reports.push({ provider: run.provider, report })
+    if (targetQuestionCount === 0 || targetQuestionCount !== plannedIds.length) {
+      return {
+        targetQuestionCount,
+        coverage,
+        reports,
+        unavailableReason: "The comparison needs a non-empty list of unique target question IDs.",
       }
     }
-    return reports
+
+    let referenceQuestions: Map<string, EvaluationResult> | undefined
+    for (const run of manifest.runs) {
+      const report = this.loadReport(run.runId)
+      const row: CompareRunCoverage = { ...run, matchedQuestions: 0 }
+      coverage.push(row)
+      if (!report) {
+        row.issue = "Report not available"
+        continue
+      }
+      if (
+        report.runId !== run.runId ||
+        report.provider !== run.provider ||
+        report.benchmark !== manifest.benchmark ||
+        report.judge !== manifest.judge ||
+        report.answeringModel !== manifest.answeringModel
+      ) {
+        row.issue = "Report run metadata does not match the comparison"
+        continue
+      }
+      if (
+        !Array.isArray(report.evaluations) ||
+        report.evaluations.some((evaluation) => typeof evaluation?.questionId !== "string")
+      ) {
+        row.issue = "Report has no verifiable question IDs"
+        continue
+      }
+
+      const evaluated = new Map(report.evaluations.map((row) => [row.questionId, row]))
+      for (const id of evaluated.keys()) {
+        if (targetIds.has(id)) row.matchedQuestions++
+      }
+      const missing = targetQuestionCount - row.matchedQuestions
+      const unexpected = evaluated.size - row.matchedQuestions
+      const duplicates = report.evaluations.length - evaluated.size
+      if (missing || unexpected || duplicates) {
+        row.issue = `${missing} missing, ${unexpected} unexpected, ${duplicates} duplicate question rows`
+        continue
+      }
+      if (report.summary?.totalQuestions !== report.evaluations.length) {
+        row.issue = "Report summary does not match the evaluated rows"
+        continue
+      }
+      const comparisonQuestions = referenceQuestions
+      if (comparisonQuestions) {
+        const changed = report.evaluations.find((question) => {
+          const reference = comparisonQuestions.get(question.questionId)
+          return (
+            !reference ||
+            question.question !== reference.question ||
+            question.groundTruth !== reference.groundTruth ||
+            question.questionType !== reference.questionType
+          )
+        })
+        if (changed) {
+          row.issue = `Question content differs for ${changed.questionId}`
+          continue
+        }
+      }
+      referenceQuestions ??= evaluated
+      reports.push({ provider: run.provider, report })
+    }
+
+    if (reports.length === 0 || reports.length !== manifest.runs.length) {
+      return {
+        targetQuestionCount,
+        coverage,
+        reports: [],
+        unavailableReason: "Every provider needs a report covering the same planned questions.",
+      }
+    }
+    return { targetQuestionCount, coverage, reports }
   }
 
   printComparisonReport(manifest: CompareManifest): void {
-    const reports = this.getReports(manifest)
-
-    if (reports.length === 0) {
-      logger.error("No reports found to compare")
+    const { reports, targetQuestionCount, coverage, unavailableReason } =
+      this.getComparisonReport(manifest)
+    if (unavailableReason) {
+      logger.warn(unavailableReason)
+      for (const row of coverage) {
+        if (row.issue) {
+          logger.warn(
+            `  ${row.provider}: ${row.matchedQuestions}/${targetQuestionCount} matched. ${row.issue}`
+          )
+        }
+      }
       return
     }
 

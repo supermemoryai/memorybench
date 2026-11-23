@@ -885,6 +885,26 @@ export default function CompareDetailPage() {
         </div>
       )}
 
+      {report?.unavailableReason && (
+        <EmptyState
+          icon={<DocumentIcon />}
+          title="Comparison results unavailable"
+          description={report.unavailableReason}
+          action={
+            report.coverage.length > 0 && (
+              <ul className="space-y-1 text-sm text-text-secondary">
+                {report.coverage.map((row) => (
+                  <li key={row.runId}>
+                    {row.provider} · {row.matchedQuestions}/{report.targetQuestionCount} questions
+                    {row.issue && <span> · {row.issue}</span>}
+                  </li>
+                ))}
+              </ul>
+            )
+          }
+        />
+      )}
+
       {/* Empty state when no reports yet */}
       {!report && !isRunning && (
         <EmptyState
