@@ -140,9 +140,7 @@ export async function compareCommand(args: string[]): Promise<void> {
       })
     }
 
-    if (result.successes > 0) {
-      batchManager.printComparisonReport(result.manifest)
-    }
+    batchManager.printComparisonReport(result.manifest)
   } catch (error) {
     logger.error(`${error}`)
   }

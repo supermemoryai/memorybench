@@ -420,6 +420,14 @@ export interface CompareReport {
   benchmark: string
   judge: string
   answeringModel: string
+  targetQuestionCount: number
+  unavailableReason?: string
+  coverage: Array<{
+    provider: string
+    runId: string
+    matchedQuestions: number
+    issue?: string
+  }>
   reports: Array<{
     provider: string
     report: BenchmarkResult

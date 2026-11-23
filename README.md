@@ -125,6 +125,10 @@ bun run src/index.ts show-failures -r my-test
 
 Each phase checkpoints independently. Failed runs resume from last successful point.
 
+Provider comparisons show rankings once every report matches the comparison's planned question IDs
+and run configuration. While reports are missing or incomplete, the comparison shows coverage by
+provider so you can see which results still need attention.
+
 ## MemScore
 
 MemScore is a composite metric that captures three dimensions of provider performance in a single line:

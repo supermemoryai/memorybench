@@ -254,21 +254,12 @@ export async function handleCompareRoutes(req: Request, url: URL): Promise<Respo
       return json({ error: "Comparison not found" }, 404)
     }
 
-    const reports = batchManager.getReports(manifest)
-    if (reports.length === 0) {
-      return json({ error: "No reports available yet" }, 404)
-    }
-
-    // Return aggregated data
     return json({
       compareId: manifest.compareId,
       benchmark: manifest.benchmark,
       judge: manifest.judge,
       answeringModel: manifest.answeringModel,
-      reports: reports.map((r) => ({
-        provider: r.provider,
-        report: r.report,
-      })),
+      ...batchManager.getComparisonReport(manifest),
     })
   }
 
