@@ -92,10 +92,11 @@ export async function runAnswerPhase(
   const pendingQuestions = targetQuestions.filter((q) => {
     const status = checkpointManager.getPhaseStatus(checkpoint, q.questionId, "answer")
     const searchStatus = checkpointManager.getPhaseStatus(checkpoint, q.questionId, "search")
-    const resultFile = checkpoint.questions[q.questionId]?.phases.search.resultFile
-    return (
-      status !== "completed" && searchStatus === "completed" && resultFile && existsSync(resultFile)
-    )
+    const search = checkpoint.questions[q.questionId]?.phases.search
+    const hasContext = checkpoint.contextSweep
+      ? Array.isArray(search?.results)
+      : search?.resultFile && existsSync(search.resultFile)
+    return status !== "completed" && searchStatus === "completed" && hasContext
   })
 
   if (pendingQuestions.length === 0) {
@@ -116,7 +117,7 @@ export async function runAnswerPhase(
     checkpoint.runId,
     "answer",
     async ({ item: question, index, total }) => {
-      const resultFile = checkpoint.questions[question.questionId].phases.search.resultFile!
+      const search = checkpoint.questions[question.questionId].phases.search
 
       const startTime = Date.now()
       checkpointManager.updatePhase(checkpoint, question.questionId, "answer", {
@@ -125,8 +126,9 @@ export async function runAnswerPhase(
       })
 
       try {
-        const searchData = JSON.parse(readFileSync(resultFile, "utf8"))
-        const context: unknown[] = searchData.results || []
+        const context: unknown[] = checkpoint.contextSweep
+          ? search.results!
+          : JSON.parse(readFileSync(search.resultFile!, "utf8")).results || []
         const questionDate = checkpoint.questions[question.questionId]?.questionDate
 
         const basePrompt = buildAnswerPrompt(

@@ -310,6 +310,9 @@ export class CheckpointManager {
     if (!source) {
       throw new Error(`Source checkpoint not found: ${sourceRunId}`)
     }
+    if (source.contextSweep) {
+      throw new Error("Context sweep variants cannot be used as ordinary run checkpoints.")
+    }
 
     // Get the index of the phase to start from
     const fromIndex = PHASE_ORDER.indexOf(fromPhase)

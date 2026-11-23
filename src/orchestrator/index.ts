@@ -115,6 +115,9 @@ export class Orchestrator {
     }
 
     if (force && this.checkpointManager.exists(runId)) {
+      if (this.checkpointManager.load(runId)?.contextSweep) {
+        throw new Error("Context sweep variants must be managed through the sweep command.")
+      }
       this.checkpointManager.delete(runId)
       logger.info("Cleared existing checkpoint (--force)")
     }
@@ -149,6 +152,9 @@ export class Orchestrator {
 
     if (this.checkpointManager.exists(runId) && !isNewRun) {
       checkpoint = this.checkpointManager.load(runId)!
+      if (checkpoint.contextSweep) {
+        throw new Error("Context sweep variants must be managed through the sweep command.")
+      }
 
       effectiveLimit = checkpoint.limit
       targetQuestionIds = checkpoint.targetQuestionIds

@@ -1,5 +1,6 @@
 import { runCommand } from "./commands/run"
 import { compareCommand } from "./commands/compare"
+import { sweepCommand } from "./commands/sweep"
 import { ingestCommand } from "./commands/ingest"
 import { searchCommand } from "./commands/search"
 import { testQuestionCommand } from "./commands/test-question"
@@ -20,6 +21,7 @@ Usage: bun run src/index.ts <command> [options]
 Commands:
   run             Run full benchmark pipeline (ingest → search → answer → evaluate → report)
   compare         Compare multiple providers against same benchmark concurrently
+  sweep           Measure answer quality across saved retrieval depths
   ingest          Ingest benchmark data into provider
   search          Search provider for questions
   test            Test a single question (search → answer → evaluate)
@@ -168,6 +170,9 @@ export async function cli(args: string[]): Promise<void> {
       break
     case "compare":
       await compareCommand(commandArgs)
+      break
+    case "sweep":
+      await sweepCommand(commandArgs)
       break
     case "ingest":
       await ingestCommand(commandArgs)

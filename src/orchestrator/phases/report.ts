@@ -252,7 +252,7 @@ export function generateReport(benchmark: Benchmark, checkpoint: RunCheckpoint):
   let memscoreComponents: { quality: number; latencyMs: number; contextTokens: number } | undefined
   // Only emit MemScore when token data covers all evaluated questions,
   // so quality, latency, and tokens are derived from the same population.
-  if (tokenMetrics && allPromptTokens.length === totalQuestions) {
+  if (!checkpoint.contextSweep && tokenMetrics && allPromptTokens.length === totalQuestions) {
     memscoreComponents = {
       quality: qualityPct,
       latencyMs: avgLatency,
@@ -276,6 +276,7 @@ export function generateReport(benchmark: Benchmark, checkpoint: RunCheckpoint):
       headline,
     },
     providerConfig: checkpoint.providerConfig,
+    contextSweep: checkpoint.contextSweep,
     latency: {
       ingest: calculateLatencyStats(ingestDurations),
       indexing: calculateLatencyStats(indexingDurations),

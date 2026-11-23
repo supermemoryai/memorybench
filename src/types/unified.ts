@@ -100,6 +100,12 @@ export interface TokenMetrics {
   avgContextTokens: number
 }
 
+export interface ContextSweep {
+  sourceRunId: string
+  sourceDigest: string
+  maxResults: number
+}
+
 export interface BenchmarkResult {
   provider: string
   benchmark: string
@@ -121,6 +127,7 @@ export interface BenchmarkResult {
     }
   }
   providerConfig?: Record<string, unknown>
+  contextSweep?: ContextSweep
   latency: {
     ingest: LatencyStats
     indexing: LatencyStats

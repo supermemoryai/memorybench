@@ -1,4 +1,4 @@
-import type { SearchResult, RetrievalMetrics } from "./unified"
+import type { ContextSweep, SearchResult, RetrievalMetrics } from "./unified"
 import type { IngestResult } from "./provider"
 import type { ConcurrencyConfig } from "./concurrency"
 
@@ -127,5 +127,6 @@ export interface RunCheckpoint {
   concurrency?: ConcurrencyConfig
   /** Provider settings for this run (e.g. search limit, threshold), applied on every resume */
   providerConfig?: Record<string, unknown>
+  contextSweep?: ContextSweep
   questions: Record<string, QuestionCheckpoint>
 }

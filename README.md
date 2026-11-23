@@ -61,6 +61,7 @@ GOOGLE_API_KEY=
 |---------|-------------|
 | `run` | Full pipeline: ingest → index → search → answer → evaluate → report |
 | `compare` | Run benchmark across multiple providers simultaneously |
+| `sweep` | Measure accuracy and prompt size at different depths of saved retrieval |
 | `ingest` | Ingest benchmark data into provider |
 | `search` | Run search phase only |
 | `test` | Test single question |
@@ -124,6 +125,33 @@ bun run src/index.ts show-failures -r my-test
 ```
 
 Each phase checkpoints independently. Failed runs resume from last successful point.
+
+## Retrieval depth experiments
+
+Use a run with completed search results for its full question selection:
+
+```bash
+bun run src/index.ts sweep --from my-test --sweep-id locomo-depth --depths 0,1,5
+```
+
+Every depth uses the same questions, ordered search results, answer model, and judge.
+A depth of `0` gives the answer model no retrieved memories. A depth of `5` uses
+the first five saved results or all available results for shorter lists. The
+table shows answer accuracy, the actual average result count, estimated context prompt
+tokens, and p95 answering latency.
+Depth controls the number of saved results, which may each contain multiple chunks.
+
+The sweep reuses search results from the source checkpoint and reruns answering
+and judging. It uses the answer and judge API credentials. No memory-provider
+credentials or requests are needed. Each variant writes a separate checkpoint
+and report under `data/runs/<sweep-id>-k<depth>/`. Run the same command again
+to resume unfinished variants. The source checkpoint stays available for other
+experiments.
+
+Reports record the source run ID, a digest of the question and retrieval inputs,
+and the depth. They measure downstream answering and judging latency. Live
+retrieval latency, retrieval relevance judging, MemScore, and leaderboard
+publication are outside this experiment.
 
 ## MemScore
 

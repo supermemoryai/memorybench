@@ -25,7 +25,8 @@ export async function runEvaluatePhase(
     const status = checkpointManager.getPhaseStatus(checkpoint, q.questionId, "evaluate")
     const answerStatus = checkpointManager.getPhaseStatus(checkpoint, q.questionId, "answer")
     const hypothesis = checkpoint.questions[q.questionId]?.phases.answer.hypothesis
-    return status !== "completed" && answerStatus === "completed" && hypothesis
+    const hasAnswer = checkpoint.contextSweep ? typeof hypothesis === "string" : hypothesis
+    return status !== "completed" && answerStatus === "completed" && hasAnswer
   })
 
   if (pendingQuestions.length === 0) {
@@ -65,12 +66,14 @@ export async function runEvaluatePhase(
             providerPrompts: provider?.prompts,
             promptOverride: benchmark.buildJudgePrompt?.({ question, hypothesis }),
           }),
-          calculateRetrievalMetrics(
-            judge.getModel(),
-            question.question,
-            question.groundTruth,
-            searchResults
-          ),
+          checkpoint.contextSweep
+            ? undefined
+            : calculateRetrievalMetrics(
+                judge.getModel(),
+                question.question,
+                question.groundTruth,
+                searchResults
+              ),
         ])
 
         const durationMs = Date.now() - startTime

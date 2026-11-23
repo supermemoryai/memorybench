@@ -100,6 +100,9 @@ export async function handleLeaderboardRoutes(req: Request, url: URL): Promise<R
       if (!checkpoint) {
         return json({ error: `Run not found: ${runId}` }, 404)
       }
+      if (checkpoint.contextSweep) {
+        return json({ error: "Context sweep results cannot be added to the leaderboard" }, 400)
+      }
 
       // Check if run is completed
       const summary = checkpointManager.getSummary(checkpoint)
